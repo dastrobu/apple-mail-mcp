@@ -1,0 +1,240 @@
+# Contributing to Apple Mail MCP Server
+
+Thank you for your interest in contributing to the Apple Mail MCP Server! This document provides guidelines and instructions for contributing.
+
+## Getting Started
+
+### Prerequisites
+
+- macOS (Mail.app is macOS-only)
+- Go 1.25 or later
+- Mail.app configured with at least one email account
+- Git
+
+### Setting Up Your Development Environment
+
+1. Fork the repository on GitHub
+2. Clone your fork:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/apple-mail-mcp.git
+   cd apple-mail-mcp
+   ```
+
+3. Add the upstream repository:
+   ```bash
+   git remote add upstream https://github.com/dastrobu/apple-mail-mcp.git
+   ```
+
+4. Install dependencies:
+   ```bash
+   go mod download
+   ```
+
+5. Build the project:
+   ```bash
+   make build
+   ```
+
+## Development Workflow
+
+### Before You Start
+
+1. Check existing issues and pull requests to avoid duplicates
+2. For major changes, open an issue first to discuss your proposal
+3. Create a new branch for your work:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+### Making Changes
+
+1. **Write clean, idiomatic Go code**
+   - Follow the project's code style (see `.github/copilot-instructions.md`)
+   - Use `gofmt` to format your code: `make fmt`
+   - Run `go vet` to catch common issues: `make vet`
+
+2. **Test your changes**
+   - Write tests for new functionality
+   - Run existing tests: `make test`
+   - Test JXA scripts if modified: `make test-scripts`
+   - Ensure all tests pass before submitting
+
+3. **Update documentation**
+   - Update `README.md` if you add new features or tools
+   - Add comments to exported functions and types
+   - Update `.github/copilot-instructions.md` if adding new patterns
+
+4. **Commit your changes**
+   - Write clear, descriptive commit messages
+   - Use conventional commit format (optional but recommended):
+     ```
+     feat: add new search_by_date tool
+     fix: handle empty mailbox names correctly
+     docs: update installation instructions
+     test: add tests for message parsing
+     ```
+
+### Testing
+
+#### Go Tests
+
+```bash
+# Run all tests
+make test
+
+# Run specific test
+go test -v -count=1 ./internal/scripts -run TestListMailboxes
+```
+
+#### JXA Script Tests
+
+```bash
+# Test all scripts (requires Mail.app running)
+make test-scripts
+
+# Test individual script
+osascript -l JavaScript scripts/list_mailboxes.js
+```
+
+#### Manual Testing with MCP Client
+
+Test your changes with an MCP client like Claude Desktop:
+
+1. Build the binary: `make build`
+2. Configure your MCP client to use the binary
+3. Test the tools through the client interface
+
+### Code Quality Checks
+
+Run all checks before submitting:
+
+```bash
+make check
+```
+
+This runs:
+- `gofmt` - Code formatting
+- `go vet` - Static analysis
+- `go test` - All tests
+
+### Submitting Your Changes
+
+1. Push your branch to your fork:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+2. Open a pull request on GitHub:
+   - Use a clear title and description
+   - Reference any related issues
+   - Describe what changed and why
+   - Include screenshots/examples if applicable
+
+3. Wait for review:
+   - Address any feedback from maintainers
+   - Keep your branch up to date with main
+   - Be patient and respectful
+
+## Code Style Guidelines
+
+### Go Code
+
+- Follow standard Go conventions (`gofmt`, `go vet`)
+- Use meaningful variable names
+- Prefer `any` over `interface{}`
+- Always handle errors explicitly
+- Use `context.Context` for operations
+- Document exported functions and types
+- Keep functions focused and testable
+
+### JXA Scripts
+
+- Always wrap in `function run(argv) { ... }`
+- Use try-catch for error handling
+- Return JSON with `{success: bool, data/error: ...}`
+- Initialize Mail.app properly
+- Convert dates to ISO strings
+- Use descriptive variable names
+
+### Tool Implementation
+
+- Use `jsonschema` tags for input validation
+- Output types must use `map[string]any` or slices
+- Set `Annotations` on all tools
+- Include clear descriptions
+
+## Adding New Tools
+
+1. Create JXA script in `scripts/` directory
+2. Embed script using `//go:embed` in `main.go`
+3. Define input struct with jsonschema tags
+4. Implement handler function
+5. Register tool with `mcp.AddTool()`
+6. Write tests
+7. Update documentation
+
+Example:
+
+```go
+//go:embed scripts/my_tool.js
+var myToolScript string
+
+type MyToolInput struct {
+    Param string `json:"param" jsonschema:"description=Parameter description"`
+}
+
+mcp.AddTool(srv,
+    &mcp.Tool{
+        Name:        "my_tool",
+        Description: "What this tool does",
+        Annotations: &mcp.ToolAnnotations{
+            Title:           "My Tool",
+            ReadOnlyHint:    true,
+            IdempotentHint:  true,
+            OpenWorldHint:   Pointer(true),
+        },
+    },
+    func(ctx context.Context, request *mcp.CallToolRequest, input MyToolInput) (*mcp.CallToolResult, any, error) {
+        // Implementation
+    },
+)
+```
+
+## Reporting Issues
+
+### Bug Reports
+
+Include:
+- Clear description of the issue
+- Steps to reproduce
+- Expected vs actual behavior
+- Go version, macOS version
+- Mail.app configuration (if relevant)
+- Logs or error messages
+
+### Feature Requests
+
+Include:
+- Clear description of the feature
+- Use case and motivation
+- Example of how it would work
+- Any relevant prior art
+
+## Code Review Process
+
+1. Maintainers will review your PR
+2. Address feedback in new commits
+3. Keep discussions focused and professional
+4. Once approved, a maintainer will merge
+
+## Questions?
+
+- Open an issue for questions about contributing
+- Check existing documentation first
+- Be clear and specific in your questions
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License.
+
+Thank you for contributing! 🎉
