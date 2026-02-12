@@ -25,8 +25,8 @@ func RegisterGetSelectedMessages(srv *mcp.Server) {
 				Title:           "Get Selected Messages",
 				ReadOnlyHint:    true,
 				IdempotentHint:  false, // Selection can change between calls
-				DestructiveHint: Pointer(false),
-				OpenWorldHint:   Pointer(true),
+				DestructiveHint: new(false),
+				OpenWorldHint:   new(true),
 			},
 		},
 		handleGetSelectedMessages,

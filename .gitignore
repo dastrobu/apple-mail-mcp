@@ -4,7 +4,7 @@
 *.dll
 *.so
 *.dylib
-/mail-mcp-server
+
 
 # Test binary, built with `go test -c`
 *.test
@@ -41,3 +41,6 @@ temp/
 
 # Log files
 *.log
+
+# binary
+/apple-mail-mcp

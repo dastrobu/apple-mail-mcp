@@ -7,7 +7,7 @@ This document provides context and guidelines for GitHub Copilot when working on
 An MCP (Model Context Protocol) server providing programmatic access to macOS Mail.app using Go and JavaScript for Automation (JXA). The server enables AI assistants and other MCP clients to interact with Apple Mail through a clean, typed interface.
 
 **Key Technologies:**
-- Go 1.25+
+- Go 1.26+
 - MCP Go SDK v1.2.0+ (github.com/modelcontextprotocol/go-sdk)
 - JXA (JavaScript for Automation) for Mail.app interaction
 - STDIO transport for MCP communication
@@ -105,8 +105,8 @@ func RegisterExampleTool(srv *mcp.Server) {
                 Title:           "Example Tool",
                 ReadOnlyHint:    true,  // All tools are read-only
                 IdempotentHint:  true,  // Most read operations are idempotent
-                DestructiveHint: Pointer(false),
-                OpenWorldHint:   Pointer(true),  // Interacts with Mail.app
+                DestructiveHint: new(false),  // Go 1.26+ new() syntax
+                OpenWorldHint:   new(true),   // Interacts with Mail.app
             },
         },
         handleExampleTool,
@@ -183,13 +183,16 @@ All tools MUST set `Annotations` to provide metadata:
 - `Title`: Human-readable tool name
 - `ReadOnlyHint`: Always `true` (this is a read-only server)
 - `IdempotentHint`: `true` for tools that produce same result on repeated calls
-- `OpenWorldHint`: Set to `Pointer(true)` (interacts with Mail.app external system)
+- `OpenWorldHint`: Set to `new(true)` (interacts with Mail.app external system)
+- `DestructiveHint`: Set to `new(false)` (read-only operations)
 
+**Go 1.26+ new() Syntax:**
+Go 1.26 introduces enhanced `new()` that accepts expressions to create pointers:
 ```go
-// Helper for optional hints
-func Pointer[T any](v T) *T {
-    return &v
-}
+new(true)    // Creates *bool pointing to true
+new(false)   // Creates *bool pointing to false
+new("text")  // Creates *string pointing to "text"
+new(42)      // Creates *int pointing to 42
 ```
 
 ### JXA Script Embedding

@@ -5,7 +5,7 @@ BINARY=mail-mcp-server
 
 # Build the binary
 build:
-	go build -o $(BINARY) ./cmd/mail-mcp-server
+	go build -o $(BINARY) .
 
 # Clean build artifacts
 clean:

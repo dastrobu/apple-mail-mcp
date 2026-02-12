@@ -2,8 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
+	"net/http"
 
+	"github.com/dastrobu/apple-mail-mcp/internal/jxa"
+	"github.com/dastrobu/apple-mail-mcp/internal/opts"
 	"github.com/dastrobu/apple-mail-mcp/internal/tools"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -14,28 +19,125 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	// Parse command-line options
+	options, err := opts.Parse()
+	if err != nil {
+		log.Fatalf("Failed to parse options: %v", err)
+	}
+
+	if err := run(options); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }
 
-func run() error {
-	// Create MCP server
-	srv := mcp.NewServer(&mcp.Implementation{
-		Name:    serverName,
-		Version: serverVersion,
-	}, nil)
+// debugMiddleware logs all MCP requests and responses when debug is enabled
+func debugMiddleware(next mcp.MethodHandler) mcp.MethodHandler {
+	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+		// Log the request
+		if req != nil {
+			reqJSON, _ := json.MarshalIndent(req, "", "  ")
+			log.Printf("[DEBUG] MCP Request: %s\nParams: %s\n", method, string(reqJSON))
+		} else {
+			log.Printf("[DEBUG] MCP Request: %s\n", method)
+		}
 
-	// Register all tools
-	tools.RegisterAll(srv)
+		// Call the next handler
+		result, err := next(ctx, method, req)
 
-	// Log to stderr (stdout is used for MCP communication)
+		// Log the response
+		if err != nil {
+			log.Printf("[DEBUG] MCP Response: %s\nError: %v\n", method, err)
+		} else if result != nil {
+			resultJSON, _ := json.MarshalIndent(result, "", "  ")
+			log.Printf("[DEBUG] MCP Response: %s\nResult: %s\n", method, string(resultJSON))
+		} else {
+			log.Printf("[DEBUG] MCP Response: %s\n", method)
+		}
+
+		return result, err
+	}
+}
+
+func run(options *opts.Options) error {
+	ctx := context.Background()
+
+	// Run startup check to verify Mail.app is accessible
+	log.Println("Running Mail.app connectivity check...")
+	if err := jxa.StartupCheck(ctx); err != nil {
+		return fmt.Errorf(`Mail.app connectivity check failed: %w
+
+This usually means either:
+1. Mail.app is not running - Please start Mail.app
+2. Missing automation permissions - Grant permission in System Settings > Privacy & Security > Automation
+
+For detailed troubleshooting, see: https://github.com/dastrobu/apple-mail-mcp#troubleshooting`, err)
+	}
+	log.Println("Mail.app is accessible and ready")
+
+	// Log to stderr (stdout is used for MCP communication in stdio mode)
 	log.Printf("Apple Mail MCP Server v%s initialized\n", serverVersion)
 
-	// Run the server on STDIO transport
-	ctx := context.Background()
-	if err := srv.Run(ctx, &mcp.StdioTransport{}); err != nil {
-		return err
+	// Run the server with the selected transport
+	switch options.Transport {
+	case "stdio":
+		log.Println("Using STDIO transport")
+
+		// Create MCP server
+		srv := mcp.NewServer(&mcp.Implementation{
+			Name:    serverName,
+			Version: serverVersion,
+		}, nil)
+
+		// Add debug middleware if debug mode is enabled
+		if options.Debug {
+			srv.AddReceivingMiddleware(debugMiddleware)
+		}
+
+		// Register all tools
+		tools.RegisterAll(srv)
+
+		if err := srv.Run(ctx, &mcp.StdioTransport{}); err != nil {
+			return err
+		}
+	case "http":
+		addr := fmt.Sprintf("%s:%d", options.Host, options.Port)
+		log.Printf("Starting HTTP server on http://%s\n", addr)
+
+		// Create HTTP handler that creates a new server for each request
+		handler := mcp.NewStreamableHTTPHandler(
+			func(r *http.Request) *mcp.Server {
+				// Create a new server instance for this request
+				srv := mcp.NewServer(&mcp.Implementation{
+					Name:    serverName,
+					Version: serverVersion,
+				}, nil)
+
+				// Add debug middleware if debug mode is enabled
+				if options.Debug {
+					srv.AddReceivingMiddleware(debugMiddleware)
+				}
+
+				// Register all tools
+				tools.RegisterAll(srv)
+
+				return srv
+			},
+			nil, // Use default options
+		)
+
+		// Create HTTP server
+		httpServer := &http.Server{
+			Addr:    addr,
+			Handler: handler,
+		}
+
+		// Run the HTTP server
+		log.Printf("HTTP server listening on http://%s\n", addr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			return fmt.Errorf("HTTP server error: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported transport: %s", options.Transport)
 	}
 
 	return nil

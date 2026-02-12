@@ -19,6 +19,7 @@ This MCP server enables AI assistants and other MCP clients to interact with App
 - macOS (Mail.app is macOS-only)
 - Go 1.25 or later
 - Mail.app must be running and configured with at least one email account
+- Automation permissions for the terminal/application running the server (see [Troubleshooting](#troubleshooting))
 
 ## Installation
 
@@ -32,13 +33,135 @@ go build -o mail-mcp-server
 
 ## Usage
 
-The server uses stdio transport for MCP communication:
+The server supports two transport modes: STDIO (default) and HTTP.
+
+### STDIO Transport (Default)
+
+For use with MCP clients like Claude Desktop:
 
 ```bash
 ./mail-mcp-server
 ```
 
+Or explicitly:
+
+```bash
+./mail-mcp-server --transport=stdio
+```
+
+### HTTP Transport
+
+For web-based clients or development:
+
+```bash
+# Start HTTP server on default port 8787
+./mail-mcp-server --transport=http
+
+# Start on custom port
+./mail-mcp-server --transport=http --port=3000
+
+# Start on custom host and port
+./mail-mcp-server --transport=http --host=0.0.0.0 --port=3000
+```
+
+The HTTP server provides a streamable HTTP transport compatible with MCP clients.
+
+### Command-Line Options
+
+```
+--transport=[stdio|http]  Transport type (default: stdio)
+--port=PORT              HTTP port (default: 8787, only used with --transport=http)
+--host=HOST              HTTP host (default: localhost, only used with --transport=http)
+--debug                  Enable debug logging of tool calls and results to stderr
+--help                   Show help message
+```
+
+Options can also be set via environment variables:
+```
+TRANSPORT=http
+PORT=8787
+HOST=localhost
+DEBUG=true
+```
+
+Command-line flags take precedence over environment variables. You can also use a `.env` file for local development.
+
+#### Debug Mode
+
+When `--debug` is enabled, the server logs all MCP protocol interactions to stderr, including:
+- **Initialize requests**: Client capabilities and initialization parameters
+- **Tools/list requests**: When the client requests the list of available tools
+- **Tool calls**: Input parameters for each tool invocation
+- **Tool results**: Output data or errors from tool execution
+
+This is useful for troubleshooting and understanding what data the MCP client is requesting:
+
+```bash
+./mail-mcp-server --debug
+```
+
+Example debug output:
+```
+[DEBUG] MCP Request: initialize
+Params: {
+  "capabilities": {
+    "roots": {
+      "listChanged": true
+    }
+  },
+  "clientInfo": {
+    "name": "claude-desktop",
+    "version": "1.0.0"
+  },
+  "protocolVersion": "2024-11-05"
+}
+[DEBUG] MCP Response: initialize
+Result: {
+  "capabilities": {
+    "tools": {}
+  },
+  "protocolVersion": "2024-11-05",
+  "serverInfo": {
+    "name": "apple-mail",
+    "version": "0.1.0"
+  }
+}
+[DEBUG] MCP Request: tools/list
+[DEBUG] MCP Response: tools/list
+Result: {
+  "tools": [
+    {
+      "name": "list_accounts",
+      "description": "Lists all configured email accounts..."
+    },
+    ...
+  ]
+}
+[DEBUG] MCP Request: tools/call
+Params: {
+  "name": "list_accounts",
+  "arguments": {
+    "enabled": true
+  }
+}
+[DEBUG] MCP Response: tools/call
+Result: {
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"accounts\":[{\"name\":\"Work\",\"enabled\":true}],\"count\":1}"
+    }
+  ]
+}
+```
+
+Since the server uses STDIO for MCP communication (on stdout), debug logs are written to stderr and won't interfere with the protocol.
+
+On first run, the server performs a connectivity check to verify Mail.app is accessible. If this fails, see the [Troubleshooting](#troubleshooting) section below.
+
 ### Configuration
+
+#### For STDIO Transport (Claude Desktop)
 
 Add to your MCP client configuration (e.g., Claude Desktop):
 
@@ -51,6 +174,108 @@ Add to your MCP client configuration (e.g., Claude Desktop):
   }
 }
 ```
+
+#### For HTTP Transport
+
+Configure your MCP client to connect to:
+```
+http://localhost:8787
+```
+
+Or the custom host/port you specified with `--port` flag or `PORT` environment variable.
+
+## Troubleshooting
+
+### Automation Permission Errors
+
+If you see an error like:
+```
+Mail.app startup check failed: osascript execution failed: signal: killed
+```
+
+This means macOS is blocking the server from controlling Mail.app. You need to grant automation permissions:
+
+#### Option 1: Using System Settings (Recommended)
+
+1. Open **System Settings** (or **System Preferences** on older macOS)
+2. Go to **Privacy & Security** → **Automation**
+3. Find the application running the server in the list:
+   - For Terminal: Look for **Terminal** or **iTerm**
+   - For Claude Desktop: Look for **Claude**
+   - For other apps: Look for the parent application name
+4. Enable the checkbox next to **Mail** for that application
+5. Restart the MCP server
+
+#### Option 2: Triggering the Permission Dialog
+
+If the app doesn't appear in Automation settings:
+
+1. Run the server manually from Terminal to trigger the permission prompt:
+   ```bash
+   ./mail-mcp-server
+   ```
+2. macOS should show a dialog asking: "Terminal would like to control Mail.app"
+3. Click **OK** to grant permission
+4. The server should now work
+
+#### Option 3: Using tccutil (Advanced)
+
+For automation or CI/CD scenarios, you can use `tccutil` to reset permissions:
+
+```bash
+# Reset automation permissions (forces a new prompt)
+tccutil reset AppleEvents
+
+# Then run the server to trigger the permission dialog
+./mail-mcp-server
+```
+
+**Note**: After granting permissions, you may need to restart the application running the MCP server (e.g., Claude Desktop, Terminal) for changes to take effect.
+
+### Mail.app Not Running
+
+If you see:
+```
+Mail.app is not running. Please start Mail.app and try again.
+```
+
+Simply open Mail.app and try again. Mail.app must be running for the server to work.
+
+### Server Exits Immediately
+
+The server performs a startup check to verify Mail.app is accessible. If the check fails, the server will exit with an error message. Common causes:
+
+1. Mail.app is not running → Start Mail.app
+2. Missing automation permissions → See [Automation Permission Errors](#automation-permission-errors) above
+3. Mail.app is starting up → Wait a few seconds and try again
+
+## Examples
+
+### Testing HTTP Transport
+
+You can test the HTTP transport using curl:
+
+```bash
+# Start the server (uses default port 8787)
+./mail-mcp-server --transport=http
+
+# Or use environment variable
+TRANSPORT=http PORT=8787 ./mail-mcp-server
+
+# In another terminal, test the endpoint
+# Note: Proper MCP clients will handle session management
+curl -i http://localhost:8787/
+
+# Expected response:
+# HTTP/1.1 400 Bad Request
+# Bad Request: GET requires an Mcp-Session-Id header
+```
+
+For actual MCP communication over HTTP, use an MCP client library that supports the streamable HTTP transport protocol.
+
+### Using with Claude Desktop (STDIO)
+
+The default STDIO transport is designed for use with MCP clients like Claude Desktop. Simply add the configuration as shown in the [Configuration](#configuration) section above.
 
 ## Available Tools
 

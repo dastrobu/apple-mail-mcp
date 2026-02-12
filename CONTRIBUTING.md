@@ -191,7 +191,7 @@ mcp.AddTool(srv,
             Title:           "My Tool",
             ReadOnlyHint:    true,
             IdempotentHint:  true,
-            OpenWorldHint:   Pointer(true),
+            OpenWorldHint:   new(true),  // Go 1.26+ new() syntax
         },
     },
     func(ctx context.Context, request *mcp.CallToolRequest, input MyToolInput) (*mcp.CallToolResult, any, error) {
