@@ -7,7 +7,7 @@ function run(argv) {
     // Parse arguments: accountName, mailboxName, messageId, replyContent
     const accountName = argv[0] || '';
     const mailboxName = argv[1] || '';
-    const messageId = parseInt(argv[2]);
+    const messageId = argv[2] ? parseInt(argv[2]) : 0;
     const replyContent = argv[3] || '';
     
     if (!accountName) {
@@ -91,87 +91,43 @@ function run(argv) {
             });
         }
         
-        // Create reply message
-        const replyMessage = Mail.OutgoingMessage({
-            sender: targetAccount.fullName() + ' <' + targetAccount.emailAddress() + '>',
-            subject: 'Re: ' + targetMessage.subject(),
-            content: replyContent,
-            visible: false
+        // Use Mail.app's built-in reply method to create the reply
+        // This properly sets up threading, headers, and recipients
+        const replyMessage = targetMessage.reply({
+            openingWindow: false,
+            replyToAll: false
         });
         
-        // Set the recipient to the original sender
-        const originalSender = targetMessage.sender();
-        // Parse sender email from "Name <email@domain.com>" format
-        let senderEmail = originalSender;
-        const emailMatch = originalSender.match(/<([^>]+)>/);
-        if (emailMatch) {
-            senderEmail = emailMatch[1];
-        }
-        
-        replyMessage.toRecipients.push(Mail.Recipient({
-            address: senderEmail
-        }));
-        
-        // Add CC recipients from original message if any
-        try {
-            const originalCcRecipients = targetMessage.ccRecipients();
-            for (let i = 0; i < originalCcRecipients.length; i++) {
-                replyMessage.ccRecipients.push(Mail.Recipient({
-                    address: originalCcRecipients[i].address()
-                }));
-            }
-        } catch (e) {
-            // No CC recipients or error accessing them
-        }
-        
-        // Set reply-to headers to maintain thread
-        try {
-            const messageId = targetMessage.messageId();
-            if (messageId) {
-                // Note: Mail.app handles In-Reply-To and References headers automatically
-                // when using reply() method, but we're creating manually so we set these
-                replyMessage.properties()['in-reply-to'] = messageId;
-            }
-        } catch (e) {
-            // Continue if we can't set headers
-        }
-        
-        // Find the Drafts mailbox
-        let draftsMailbox = null;
-        const mailboxes = targetAccount.mailboxes();
-        
-        for (let i = 0; i < mailboxes.length; i++) {
-            const mbName = mailboxes[i].name();
-            // Check for common drafts mailbox names
-            if (mbName === 'Drafts' || mbName === 'Draft' || 
-                mbName.toLowerCase() === 'drafts' || mbName.toLowerCase() === 'draft') {
-                draftsMailbox = mailboxes[i];
-                break;
-            }
-        }
-        
-        if (!draftsMailbox) {
+        if (!replyMessage) {
             return JSON.stringify({
                 success: false,
-                error: 'Drafts mailbox not found in account. Please ensure a Drafts mailbox exists.'
+                error: 'Failed to create reply message. The reply() method returned null.'
             });
         }
         
-        // Save the message to drafts
-        draftsMailbox.messages.push(replyMessage);
+        // Set the reply content
+        replyMessage.content = replyContent;
         
-        // Get the draft message ID (it's the last message in drafts)
-        const draftMessages = draftsMailbox.messages();
-        let draftId = null;
-        if (draftMessages.length > 0) {
-            draftId = draftMessages[draftMessages.length - 1].id();
+        // The reply is automatically saved as a draft by Mail.app
+        // Get the draft message details
+        const draftId = replyMessage.id();
+        const subject = replyMessage.subject();
+        
+        // Get recipient addresses
+        const toRecipients = [];
+        try {
+            const recipients = replyMessage.toRecipients();
+            for (let i = 0; i < recipients.length; i++) {
+                toRecipients.push(recipients[i].address());
+            }
+        } catch (e) {
+            // If we can't get recipients, continue
         }
         
         const result = {
             draft_id: draftId,
-            subject: replyMessage.subject(),
-            to_recipients: [senderEmail],
-            drafts_mailbox: draftsMailbox.name(),
+            subject: subject,
+            to_recipients: toRecipients,
             message: 'Reply saved to drafts successfully'
         };
         

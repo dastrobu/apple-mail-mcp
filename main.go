@@ -58,6 +58,24 @@ func debugMiddleware(next mcp.MethodHandler) mcp.MethodHandler {
 	}
 }
 
+// createServer creates and configures a new MCP server instance
+func createServer(options *opts.Options) *mcp.Server {
+	srv := mcp.NewServer(&mcp.Implementation{
+		Name:    serverName,
+		Version: serverVersion,
+	}, nil)
+
+	// Add debug middleware if debug mode is enabled
+	if options.Debug {
+		srv.AddReceivingMiddleware(debugMiddleware)
+	}
+
+	// Register all tools
+	tools.RegisterAll(srv)
+
+	return srv
+}
+
 func run(options *opts.Options) error {
 	ctx := context.Background()
 
@@ -77,25 +95,12 @@ For detailed troubleshooting, see: https://github.com/dastrobu/apple-mail-mcp#tr
 	// Log to stderr (stdout is used for MCP communication in stdio mode)
 	log.Printf("Apple Mail MCP Server v%s initialized\n", serverVersion)
 
+	srv := createServer(options)
+
 	// Run the server with the selected transport
 	switch options.Transport {
 	case "stdio":
 		log.Println("Using STDIO transport")
-
-		// Create MCP server
-		srv := mcp.NewServer(&mcp.Implementation{
-			Name:    serverName,
-			Version: serverVersion,
-		}, nil)
-
-		// Add debug middleware if debug mode is enabled
-		if options.Debug {
-			srv.AddReceivingMiddleware(debugMiddleware)
-		}
-
-		// Register all tools
-		tools.RegisterAll(srv)
-
 		if err := srv.Run(ctx, &mcp.StdioTransport{}); err != nil {
 			return err
 		}
@@ -103,26 +108,14 @@ For detailed troubleshooting, see: https://github.com/dastrobu/apple-mail-mcp#tr
 		addr := fmt.Sprintf("%s:%d", options.Host, options.Port)
 		log.Printf("Starting HTTP server on http://%s\n", addr)
 
-		// Create HTTP handler that creates a new server for each request
 		handler := mcp.NewStreamableHTTPHandler(
 			func(r *http.Request) *mcp.Server {
-				// Create a new server instance for this request
-				srv := mcp.NewServer(&mcp.Implementation{
-					Name:    serverName,
-					Version: serverVersion,
-				}, nil)
-
-				// Add debug middleware if debug mode is enabled
-				if options.Debug {
-					srv.AddReceivingMiddleware(debugMiddleware)
-				}
-
-				// Register all tools
-				tools.RegisterAll(srv)
-
+				// since we are stateless, we can return the same server instance
 				return srv
 			},
-			nil, // Use default options
+			&mcp.StreamableHTTPOptions{
+				Stateless: true,
+			},
 		)
 
 		// Create HTTP server

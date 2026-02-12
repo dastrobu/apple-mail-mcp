@@ -1,7 +1,7 @@
 .PHONY: build clean test test-scripts fmt vet help
 
 # Binary name
-BINARY=mail-mcp-server
+BINARY=apple-mail-mcp
 
 # Build the binary
 build:
