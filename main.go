@@ -35,8 +35,9 @@ func debugMiddleware(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 		// Log the request
 		if req != nil {
-			reqJSON, _ := json.MarshalIndent(req, "", "  ")
-			log.Printf("[DEBUG] MCP Request: %s\nParams: %s\n", method, string(reqJSON))
+			p := req.GetParams()
+			j, _ := json.MarshalIndent(p, "", "  ")
+			log.Printf("[DEBUG] MCP Request: %s\nParams: %s\n", method, string(j))
 		} else {
 			log.Printf("[DEBUG] MCP Request: %s\n", method)
 		}
