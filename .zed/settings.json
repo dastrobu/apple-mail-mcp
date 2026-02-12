@@ -1,0 +1,36 @@
+{
+  "languages": {
+    "Go": {
+      "format_on_save": "on",
+      "formatter": "language_server",
+      "code_actions_on_format": {
+        "source.organizeImports": true
+      }
+    },
+    "JavaScript": {
+      "format_on_save": "on"
+    }
+  },
+  "lsp": {
+    "gopls": {
+      "initialization_options": {
+        "usePlaceholders": true,
+        "staticcheck": true,
+        "analyses": {
+          "unusedparams": true,
+          "shadow": true
+        }
+      }
+    }
+  },
+  "terminal": {
+    "env": {
+      "GOFLAGS": "-v"
+    }
+  },
+  "file_types": {
+    "JavaScript": ["js"],
+    "Go": ["go"],
+    "Markdown": ["md"]
+  }
+}

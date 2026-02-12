@@ -1,0 +1,12 @@
+[
+  {
+    "label": "Debug MCP Server (HTTP)",
+     "adapter": "Delve",
+     "request": "launch",
+     "mode": "debug",
+     // For Delve, the program can be a package name
+     "program": "main.go",
+     "args": ["--transport", "http", "--debug"]
+     // "buildFlags": [],
+   }
+]
