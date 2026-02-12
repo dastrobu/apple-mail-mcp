@@ -4,11 +4,13 @@ function run(argv) {
     const Mail = Application('Mail');
     Mail.includeStandardAdditions = true;
     
-    // Parse arguments: accountName, mailboxName, messageId, replyContent
+    // Parse arguments: accountName, mailboxName, messageId, replyContent, openingWindow, replyToAll
     const accountName = argv[0] || '';
     const mailboxName = argv[1] || '';
     const messageId = argv[2] ? parseInt(argv[2]) : 0;
     const replyContent = argv[3] || '';
+    const openingWindow = argv[4] === 'true';
+    const replyToAll = argv[5] === 'true';
     
     if (!accountName) {
         return JSON.stringify({
@@ -94,8 +96,8 @@ function run(argv) {
         // Use Mail.app's built-in reply method to create the reply
         // This properly sets up threading, headers, and recipients
         const replyMessage = targetMessage.reply({
-            openingWindow: false,
-            replyToAll: false
+            openingWindow: openingWindow,
+            replyToAll: replyToAll
         });
         
         if (!replyMessage) {

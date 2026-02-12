@@ -14,10 +14,12 @@ var replyToMessageScript string
 
 // ReplyToMessageInput defines input parameters for reply_to_message tool
 type ReplyToMessageInput struct {
-	Account      string `json:"account" jsonschema:"Name of the email account"`
-	Mailbox      string `json:"mailbox" jsonschema:"Name of the mailbox containing the message to reply to"`
-	MessageID    int    `json:"message_id" jsonschema:"The unique ID of the message to reply to"`
-	ReplyContent string `json:"reply_content" jsonschema:"The content/body of the reply message"`
+	Account       string `json:"account" jsonschema:"Name of the email account"`
+	Mailbox       string `json:"mailbox" jsonschema:"Name of the mailbox containing the message to reply to"`
+	MessageID     int    `json:"message_id" jsonschema:"The unique ID of the message to reply to"`
+	ReplyContent  string `json:"reply_content" jsonschema:"The content/body of the reply message"`
+	OpeningWindow *bool  `json:"opening_window,omitempty" jsonschema:"Whether to show the window for the reply message. Default is false."`
+	ReplyToAll    *bool  `json:"reply_to_all,omitempty" jsonschema:"Whether to reply to all recipients. Default is false (reply to sender only)."`
 }
 
 // RegisterReplyToMessage registers the reply_to_message tool with the MCP server
@@ -39,7 +41,24 @@ func RegisterReplyToMessage(srv *mcp.Server) {
 }
 
 func handleReplyToMessage(ctx context.Context, request *mcp.CallToolRequest, input ReplyToMessageInput) (*mcp.CallToolResult, any, error) {
-	data, err := jxa.Execute(ctx, replyToMessageScript, input.Account, input.Mailbox, fmt.Sprintf("%d", input.MessageID), input.ReplyContent)
+	// Apply defaults for optional parameters
+	openingWindow := false
+	if input.OpeningWindow != nil {
+		openingWindow = *input.OpeningWindow
+	}
+
+	replyToAll := false
+	if input.ReplyToAll != nil {
+		replyToAll = *input.ReplyToAll
+	}
+
+	data, err := jxa.Execute(ctx, replyToMessageScript,
+		input.Account,
+		input.Mailbox,
+		fmt.Sprintf("%d", input.MessageID),
+		input.ReplyContent,
+		fmt.Sprintf("%t", openingWindow),
+		fmt.Sprintf("%t", replyToAll))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to execute reply_to_message: %w", err)
 	}

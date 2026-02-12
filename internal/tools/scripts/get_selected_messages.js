@@ -4,13 +4,21 @@ function run(argv) {
     const Mail = Application('Mail');
     Mail.includeStandardAdditions = true;
     
-    // Parse arguments: limit
+    // Parse arguments: limit, startAt (optional, defaults to 0)
     const limit = parseInt(argv[0]);
+    const startAt = argv[1] ? parseInt(argv[1]) : 0;
     
     if (!limit || limit < 1) {
         return JSON.stringify({
             success: false,
             error: 'Limit is required and must be at least 1'
+        });
+    }
+    
+    if (startAt < 0) {
+        return JSON.stringify({
+            success: false,
+            error: 'startAt must be 0 or greater'
         });
     }
     
@@ -40,16 +48,29 @@ function run(argv) {
             return JSON.stringify({
                 success: true,
                 data: {
-                    count: 0,
+                    selectedMessagesCount: 0,
                     messages: []
                 }
             });
         }
         
-        // Extract message details (limited by limit parameter)
+        const selectedMessagesCount = selectedMessages.length;
+        
+        // Check if startAt is beyond available messages
+        if (startAt >= selectedMessagesCount) {
+            return JSON.stringify({
+                success: true,
+                data: {
+                    selectedMessagesCount: selectedMessagesCount,
+                    messages: []
+                }
+            });
+        }
+        
+        // Extract message details (limited by limit parameter, starting at startAt)
         const result = [];
-        const messagesToProcess = Math.min(selectedMessages.length, limit);
-        for (let i = 0; i < messagesToProcess; i++) {
+        const endAt = Math.min(startAt + limit, selectedMessagesCount);
+        for (let i = startAt; i < endAt; i++) {
             const msg = selectedMessages[i];
             
             // Get mailbox and account information
@@ -73,7 +94,7 @@ function run(argv) {
         return JSON.stringify({
             success: true,
             data: {
-                count: result.length,
+                selectedMessagesCount: selectedMessagesCount,
                 messages: result
             }
         });
