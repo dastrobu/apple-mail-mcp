@@ -84,7 +84,7 @@ Draft Details:
 
 ✓ Draft lookup logic works correctly
 ✓ Draft can be found by ID in Drafts mailbox
-✓ Ready for use with replace_draft tool
+✓ Ready for use with replace_outgoing_message tool
 ```
 
 ### What It Tests
@@ -126,8 +126,6 @@ The script demonstrates that we **must** search the Drafts mailbox to get the co
 ### Related Files
 
 - `internal/tools/scripts/reply_to_message.js` - Production implementation
-- `internal/tools/scripts/create_draft.js` - Similar lookup logic
-- `internal/tools/scripts/replace_draft.js` - Uses draft IDs
 - `docs/DRAFT_MANAGEMENT.md` - Detailed draft ID documentation
 
 ### Development Notes

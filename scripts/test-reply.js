@@ -214,7 +214,7 @@ function run(argv) {
     console.log("");
     console.log("✓ Draft lookup logic works correctly");
     console.log("✓ Draft can be found by ID in Drafts mailbox");
-    console.log("✓ Ready for use with replace_draft tool");
+    console.log("✓ Ready for use with replace_outgoing_message tool");
 
     return JSON.stringify({
       success: true,

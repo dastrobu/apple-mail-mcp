@@ -6,8 +6,6 @@ A Model Context Protocol (MCP) server providing programmatic access to macOS Mai
 
 This MCP server enables AI assistants and other MCP clients to interact with Apple Mail on macOS. It provides read-only access to mailboxes, messages, and search functionality through a clean, typed interface.
 
-> **Note on Draft Management**: Tools that create or modify drafts (`create_draft`, `reply_to_message`, `replace_draft`) have timing-dependent ID lookup. See [docs/DRAFT_MANAGEMENT.md](docs/DRAFT_MANAGEMENT.md) for detailed information about draft ID behavior, limitations, and best practices.
-
 ## Features
 
 - **List Accounts**: Enumerate all configured email accounts with their properties
@@ -535,12 +533,20 @@ apple-mail-mcp/
 │       │   ├── list_mailboxes.js
 │       │   ├── get_message_content.js
 │       │   ├── get_selected_messages.js
-│       │   └── reply_to_message.js
+│       │   ├── reply_to_message.js
+│       │   ├── list_drafts.js
+│       │   ├── create_outgoing_message.js
+│       │   ├── list_outgoing_messages.js
+│       │   └── replace_outgoing_message.js
 │       ├── list_accounts.go
 │       ├── list_mailboxes.go
 │       ├── get_message_content.go
 │       ├── get_selected_messages.go
 │       ├── reply_to_message.go
+│       ├── list_drafts.go
+│       ├── create_outgoing_message.go
+│       ├── list_outgoing_messages.go
+│       ├── replace_outgoing_message.go
 │       └── tools.go          # Tool registration and helpers
 ├── go.mod
 ├── go.sum

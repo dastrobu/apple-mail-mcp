@@ -30,7 +30,7 @@ func RegisterCreateOutgoingMessage(srv *mcp.Server) {
 	mcp.AddTool(srv,
 		&mcp.Tool{
 			Name:        "create_outgoing_message",
-			Description: "Creates a new outgoing email message and returns its OutgoingMessage ID immediately (no delay). The message is saved but not sent. Use replace_outgoing_message to modify it. This is the fast alternative to create_draft - returns OutgoingMessage.id() which works with replace_outgoing_message. Note: The OutgoingMessage only exists in memory while Mail.app is running. For persistent drafts that survive Mail.app restart, use create_draft instead.",
+			Description: "Creates a new outgoing email message and returns its OutgoingMessage ID immediately (no delay). The message is saved but not sent. Use replace_outgoing_message to modify it. Returns OutgoingMessage.id() which works with replace_outgoing_message. Note: The OutgoingMessage only exists in memory while Mail.app is running. If you need persistent drafts that survive Mail.app restart, use reply_to_message instead.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:           "Create Outgoing Message",
 				ReadOnlyHint:    false,

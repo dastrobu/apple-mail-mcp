@@ -4,18 +4,17 @@ This document explains how draft email management works in the Mail MCP server, 
 
 ## Overview
 
-The Mail MCP server provides three tools for working with email drafts:
-1. `create_draft` - Create a new draft email
-2. `reply_to_message` - Create a reply draft to an existing message
-3. `replace_draft` - Replace an existing draft with updated content
+The Mail MCP server provides the `reply_to_message` tool for creating draft emails. This tool creates a reply to an existing message and saves it as a draft in the Drafts mailbox.
+
+> **Note**: The `create_draft` and `replace_draft` tools have been removed from this server. Only `reply_to_message` remains for draft creation.
 
 ## Important Limitation: Draft IDs
 
-**Key Issue:** Draft IDs returned by `create_draft` and `reply_to_message` are subject to a timing-dependent lookup process.
+**Key Issue:** Draft IDs returned by `reply_to_message` are subject to a timing-dependent lookup process.
 
 ### How Draft ID Lookup Works
 
-When you create a draft:
+When you create a reply draft:
 
 1. **OutgoingMessage Created**: Mail.app creates an `OutgoingMessage` object in memory
 2. **Draft Saved**: The message is saved to the Drafts mailbox
@@ -30,9 +29,9 @@ When you create a draft:
    - The server must search to map between these ID spaces
 
 2. **Subject-Based Lookup**:
-   - Multiple drafts can have identical subjects
+   - Multiple drafts can have identical subjects (especially multiple replies to the same message)
    - The server finds the most recent draft with matching subject
-   - If you create multiple drafts with the same subject rapidly, lookup may fail
+   - If you create multiple reply drafts rapidly, lookup may fail
 
 3. **Sync Timing**:
    - Exchange accounts and slow systems may need more than 4 seconds to sync
@@ -45,164 +44,165 @@ When you create a draft:
 
 ## Best Practices
 
-### 1. Use Unique Subjects
-
-When creating multiple drafts, use unique subjects to avoid lookup collisions:
-
-```json
-{
-  "subject": "Draft 2024-02-13 08:04:15",
-  "content": "Draft content here"
-}
-```
-
-### 2. Wait Between Draft Operations
+### 1. Wait Between Draft Operations
 
 Allow time for drafts to sync before creating new ones:
 
-- **Minimum wait**: 4 seconds between `create_draft` calls
+- **Minimum wait**: 4 seconds between `reply_to_message` calls
 - **Recommended wait**: 5-6 seconds for Exchange accounts
 - **Safe wait**: 10 seconds for maximum reliability
 
-### 3. Verify Draft IDs
+### 2. Verify Draft IDs
 
-After creating a draft, verify the returned ID works before using it:
+After creating a draft, verify the returned ID works by using other tools:
 
 ```json
-// Create draft
-{ "tool": "create_draft", ... }
+// Create reply draft
+{ "tool": "reply_to_message", ... }
 // Returns: { "draft_id": 12345 }
 
-// Wait a moment, then verify
-{ "tool": "replace_draft", "draft_id": 12345, ... }
+// Wait a moment, then verify by listing drafts
+{ "tool": "list_drafts", "account": "...", "limit": 10 }
 ```
 
-If `replace_draft` fails with "Draft with ID X not found", the sync took longer than expected.
+If the draft doesn't appear in the list, the sync took longer than expected.
 
-### 4. Use list_messages to Find Drafts
+### 3. Use list_drafts to Find Drafts
 
-If draft IDs are unreliable, you can list messages in the Drafts mailbox to find drafts by other criteria:
+The `list_drafts` tool provides a reliable way to find drafts by other criteria:
 
 ```json
 {
-  "tool": "list_messages",
+  "tool": "list_drafts",
   "account": "Your Account",
-  "mailboxPath": ["Drafts"],
   "limit": 50
 }
 ```
 
 Then search the results by subject, date, or content to find your draft.
 
+### 4. Make Reply Content Unique
+
+If creating multiple replies to the same message, add unique content to help differentiate them:
+
+```json
+{
+  "tool": "reply_to_message",
+  "reply_content": "Response #1 - [2024-02-13 08:04:15]",
+  ...
+}
+```
+
 ## Tool-Specific Notes
-
-### create_draft
-
-**Returns**: `draft_id` - The Message ID in the Drafts mailbox
-
-**Reliability**: 
-- High for unique subjects
-- Medium for duplicate subjects
-- Lower on Exchange accounts or slow networks
-
-**Recommendations**:
-- Use unique subjects
-- Wait 4+ seconds before using the ID
-- Check the Drafts mailbox manually if lookup fails
 
 ### reply_to_message
 
 **Returns**: `draft_id` - The Message ID in the Drafts mailbox
 
 **Reliability**:
-- Same as `create_draft`
-- Reply subjects are usually unique (Re: Original Subject)
-- Multiple replies to the same message can cause collisions
-
-**Recommendations**:
-- Same as `create_draft`
-- If creating multiple replies, add unique content to differentiate them
-
-### replace_draft
-
-**Requires**: `draft_id` - The Message ID from the Drafts mailbox
+- High for single replies to unique messages
+- Medium when creating multiple replies to the same message
+- Lower on Exchange accounts or slow networks
 
 **How it Works**:
-1. Finds the draft by ID in Drafts mailbox
-2. Reads current draft properties
-3. Deletes the old draft
-4. Creates a new draft with updated properties
-5. Searches Drafts mailbox to find the new draft
-6. Returns new draft ID
-
-**Reliability**:
-- Depends on input ID being correct
-- Depends on new draft lookup succeeding
-- Can fail if draft was moved/deleted externally
+1. Creates an `OutgoingMessage` reply to the specified message
+2. Mail.app automatically includes quoted original message
+3. Sets recipients based on original message (sender or all recipients if `reply_to_all` is true)
+4. Saves the reply to the Drafts mailbox
+5. Waits 4 seconds for sync
+6. Searches Drafts mailbox by subject to find the draft
+7. Returns the Message ID
 
 **Recommendations**:
-- Verify input ID is from Drafts mailbox (not OutgoingMessage)
-- Use recent IDs (< 30 seconds old)
-- Check if draft exists before replacing
-- Handle "Draft not found" errors gracefully
+- Wait 4+ seconds before using the returned ID
+- Use unique reply content if creating multiple replies
+- Check the Drafts mailbox manually if lookup fails
+- Use `list_drafts` to verify drafts were created successfully
+
+## Editing Drafts
+
+To edit a draft after creation, you have two options:
+
+### Option 1: Use Outgoing Message Tools
+
+The recommended approach is to use the outgoing message tools:
+
+1. Use `list_outgoing_messages` to find the draft by subject or other criteria
+2. Use `replace_outgoing_message` to update the draft content
+
+These tools work directly with `OutgoingMessage` objects and don't require the draft to be fully synced to the Drafts mailbox.
+
+### Option 2: Manual Editing in Mail.app
+
+Simply open Mail.app and edit the draft manually. The draft ID in the Drafts mailbox will remain stable as long as you don't move or delete the draft.
 
 ## Troubleshooting
 
 ### "Draft with ID X not found"
 
 **Causes**:
-1. Draft ID is from OutgoingMessage, not Drafts mailbox
+1. Sync hasn't completed yet
 2. Draft was manually moved or deleted in Mail.app
-3. Sync hasn't completed yet
-4. ID lookup failed during creation
+3. ID lookup failed during creation due to multiple drafts with same subject
 
 **Solutions**:
-1. Use `list_messages` to find drafts by subject/date
-2. Wait longer and retry
-3. Create a new draft instead of replacing
+1. Use `list_drafts` to find drafts by subject/date
+2. Wait longer and retry with longer delay
+3. Use `list_outgoing_messages` which works with OutgoingMessage objects
 
-### Multiple Drafts with Same Subject
+### Multiple Reply Drafts to Same Message
 
-**Problem**: Draft ID lookup returns wrong draft
+**Problem**: Draft ID lookup returns wrong draft when creating multiple replies to the same message
 
 **Solutions**:
-1. Delete duplicate drafts manually in Mail.app
-2. Use more unique subjects
-3. Add timestamps to subjects
-4. Query drafts by multiple criteria (subject + date + sender)
+1. Add unique content to each reply (
+timestamps, sequence numbers, etc.)
+2. Wait at least 4 seconds between reply operations
+3. Use `list_drafts` to verify which draft was created
+4. Delete duplicate drafts manually in Mail.app
 
-### Draft IDs Change After Replace
+### Exchange Account Delays
 
-**Expected Behavior**: `replace_draft` deletes the old draft and creates a new one
+**Problem**: Draft IDs not found even after 4-second delay
 
-**Important**:
-- The returned `new_draft_id` is different from the input `draft_id`
-- Any threading headers (In-Reply-To, References) are lost
-- Update your draft ID references after replace operations
+**Solutions**:
+1. Use 6-10 second delays for Exchange accounts
+2. Check network connectivity and Exchange server status
+3. Use `list_outgoing_messages` instead, which doesn't require mailbox sync
 
-## Future Improvements
+## Alternatives to Draft Management
 
-Potential enhancements to make draft management more reliable:
+If draft ID reliability is critical for your use case, consider these alternatives:
 
-1. **Unique Markers**: Automatically add hidden markers to draft content for reliable lookup
-2. **Message-Data-ID**: Use Mail.app's Message-Data-ID header if available
-3. **list_drafts Tool**: Dedicated tool to list and search drafts
-4. **Longer Timeouts**: Make sync delay configurable
-5. **Retry Logic**: Automatically retry draft lookups with exponential backoff
+### 1. Use Outgoing Message Tools
+
+The `create_outgoing_message`, `list_outgoing_messages`, and `replace_outgoing_message` tools work directly with Mail.app's `OutgoingMessage` objects without requiring mailbox sync. These are more reliable for programmatic draft management.
+
+### 2. Manual Draft Management
+
+Create drafts using `reply_to_message`, then have the user edit them manually in Mail.app. This avoids the complexity of programmatic draft updates.
+
+### 3. Direct Email Sending
+
+If drafts are only an intermediate step, consider using other email sending tools or APIs that don't require Mail.app integration.
 
 ## Summary
 
 Draft management in the Mail MCP server works well for typical use cases but has limitations due to Mail.app's API:
 
 ✅ **Works Well For**:
-- Creating drafts with unique subjects
-- Single draft operations with proper delays
-- Interactive use with human-paced operations
+- Creating reply drafts with sufficient delays between operations
+- Single reply operations with human-paced timing
+- Interactive use where users can verify drafts in Mail.app
 
 ⚠️ **Challenging For**:
 - Rapid draft creation (< 4 seconds apart)
-- Drafts with duplicate subjects
+- Multiple replies to the same message created in quick succession
 - Exchange accounts with slow sync
-- Automated batch operations
+- Automated batch operations requiring immediate draft access
 
-When in doubt, use `list_messages` on the Drafts mailbox to verify draft IDs and find drafts by content rather than relying solely on returned IDs.
+**Recommendations**:
+- Use `reply_to_message` for creating reply drafts
+- Use `list_drafts` to verify and find drafts reliably
+- Use `list_outgoing_messages` and `replace_outgoing_message` for editing drafts programmatically
+- When in doubt, wait longer between operations and verify results with list tools

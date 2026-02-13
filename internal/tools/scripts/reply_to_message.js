@@ -66,7 +66,7 @@ function run(argv) {
     return JSON.stringify({
       success: false,
       error:
-        "Cannot reply to draft messages. Drafts are not sent messages and replying to them will crash Mail.app. Use replace_draft to modify drafts instead.",
+        "Cannot reply to draft messages. Drafts are not sent messages and replying to them will crash Mail.app. Use replace_outgoing_message to modify drafts instead.",
     });
   }
 

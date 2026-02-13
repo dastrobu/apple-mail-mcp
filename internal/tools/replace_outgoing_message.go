@@ -16,7 +16,7 @@ var replaceOutgoingMessageScript string
 
 // ReplaceOutgoingMessageInput defines input parameters for replace_outgoing_message tool
 type ReplaceOutgoingMessageInput struct {
-	OutgoingID    int      `json:"outgoing_id" jsonschema:"The ID of the OutgoingMessage to replace (from reply_to_message or create_draft)"`
+	OutgoingID    int      `json:"outgoing_id" jsonschema:"The ID of the OutgoingMessage to replace (from reply_to_message or create_outgoing_message)"`
 	Subject       string   `json:"subject,omitempty" jsonschema:"New subject line. Leave empty to keep existing subject"`
 	Content       string   `json:"content,omitempty" jsonschema:"New body text. Leave empty to keep existing content. Note: This replaces ALL existing content"`
 	ToRecipients  []string `json:"to_recipients,omitempty" jsonschema:"New list of To recipients. Leave empty to keep existing. Provide empty array to clear all"`
@@ -31,7 +31,7 @@ func RegisterReplaceOutgoingMessage(srv *mcp.Server) {
 	mcp.AddTool(srv,
 		&mcp.Tool{
 			Name:        "replace_outgoing_message",
-			Description: "Replaces an OutgoingMessage (reply draft or new draft) by deleting it and creating a new one with updated properties. This tool works with OutgoingMessage IDs returned by reply_to_message or create_draft. Note: Only works while the OutgoingMessage is still in memory (before Mail.app is closed). The old message is deleted and a new one is created, so the outgoing_id will change. For drafts saved to the Drafts mailbox, use replace_draft instead.",
+			Description: "Replaces an OutgoingMessage (reply draft or new draft) by deleting it and creating a new one with updated properties. This tool works with OutgoingMessage IDs returned by reply_to_message or create_outgoing_message. Note: Only works while the OutgoingMessage is still in memory (before Mail.app is closed). The old message is deleted and a new one is created, so the outgoing_id will change.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:           "Replace Outgoing Message",
 				ReadOnlyHint:    false,
