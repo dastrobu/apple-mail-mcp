@@ -126,7 +126,6 @@ The script demonstrates that we **must** search the Drafts mailbox to get the co
 ### Related Files
 
 - `internal/tools/scripts/reply_to_message.js` - Production implementation
-- `docs/DRAFT_MANAGEMENT.md` - Detailed draft ID documentation
 
 ### Development Notes
 

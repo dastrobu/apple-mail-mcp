@@ -4,6 +4,32 @@
 
 A Model Context Protocol (MCP) server providing programmatic access to macOS Mail.app using JavaScript for Automation (JXA).
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Security & Privacy](#security--privacy)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+  - [Option 1: Homebrew (Recommended)](#option-1-homebrew-recommended)
+  - [Option 2: Download Binary](#option-2-download-binary)
+  - [Option 3: Build from Source](#option-3-build-from-source)
+- [Quick Start](#quick-start)
+  - [HTTP Transport (Recommended)](#http-transport-recommended)
+  - [STDIO Transport (Alternative)](#stdio-transport-alternative)
+- [Automation Permissions](#automation-permissions)
+- [macOS Automation Permissions](#macos-automation-permissions)
+- [Command-Line Options](#command-line-options)
+- [Debug Mode](#debug-mode)
+- [Bash Completion](#bash-completion)
+- [Configuration](#configuration)
+  - [Zed Configuration](#zed-configuration)
+  - [Claude Desktop Configuration](#claude-desktop-configuration)
+- [Available Tools](#available-tools)
+- [Rich Text Support](#rich-text-support)
+- [Development](#development)
+- [License](#license)
+
 ## Overview
 
 This MCP server enables AI assistants and other MCP clients to interact with Apple Mail on macOS. It provides read-only access to mailboxes, messages, and search functionality through a clean, typed interface.
@@ -246,15 +272,15 @@ STDIO mode runs the server as a child process of the MCP client. Note that autom
 apple-mail-mcp
 ```
 
-### Understanding Parent Process and Permissions
+### macOS Automation Permissions
 
-**Key Insight:** macOS grants automation permissions to the **process that launches the binary**, not the binary itself.
+macOS grants automation permissions to the **process that launches the binary**:
 
-- **Launching from Terminal** (even with `--transport=http`): Terminal becomes the parent process, so Terminal gets the permission
-- **Launching via launchd**: No parent process, so the `apple-mail-mcp` binary itself gets the permission
-- **Launching via Finder** (double-click): Similar to launchd, the binary gets the permission
+- **Terminal/shell**: Terminal gets the permission (even with `--transport=http`)
+- **launchd service**: The binary itself gets the permission (recommended)
+- **Finder** (double-click): The binary itself gets the permission
 
-This is why **HTTP mode with launchd** is recommended - it ensures the binary (not Terminal or other applications) receives the automation permissions.
+**Recommended setup:** Use launchd with HTTP transport to grant permissions directly to `apple-mail-mcp` rather than Terminal or other parent processes.
 
 ### Command-Line Options
 
@@ -322,6 +348,48 @@ apple-mail-mcp launchd <TAB>        # Completes: create, remove
 ```
 
 ### Configuration
+
+#### Zed Configuration
+
+**HTTP Transport (Recommended):**
+
+1. Start the server using launchd (recommended):
+
+   ```bash
+   apple-mail-mcp launchd create
+   ```
+
+2. Configure Zed (`~/.config/zed/settings.json`):
+   ```json
+   {
+     "context_servers": {
+       "apple-mail-mcp": {
+         "settings": {
+           "url": "http://localhost:8787"
+         }
+       }
+     }
+   }
+   ```
+
+**STDIO Transport:**
+
+Configure Zed to run the binary directly:
+
+```json
+{
+  "context_servers": {
+    "apple-mail-mcp": {
+      "settings": {
+        "command": {
+          "path": "/opt/homebrew/bin/apple-mail-mcp",
+          "args": []
+        }
+      }
+    }
+  }
+}
+```
 
 #### Claude Desktop Configuration
 
@@ -652,8 +720,7 @@ Creates a reply to a specific message and saves it as a draft in the Drafts mail
 **Important Notes:**
 
 - The returned `draft_id` is obtained after a 4-second sync delay
-- If creating multiple drafts rapidly, wait 4+ seconds between operations
-- See [docs/DRAFT_MANAGEMENT.md](docs/DRAFT_MANAGEMENT.md) for details
+- If creating multiple drafts rapidly, wait 4+ seconds between operations for proper sync
 
 ### create_outgoing_message
 
@@ -702,7 +769,7 @@ When `content_format` is set to "markdown", the content is parsed as Markdown an
 }
 ````
 
-**Custom Styling:**
+### Custom Styling
 
 You can customize rich text styling by providing a YAML configuration file:
 
@@ -710,34 +777,109 @@ You can customize rich text styling by providing a YAML configuration file:
 apple-mail-mcp --rich-text-styles=/path/to/custom_styles.yaml
 ```
 
-**Margin Support:**
+**Full Configuration Example:**
 
-Block elements (headings, code blocks, blockquotes, lists) support `margin_top` and `margin_bottom` properties (measured in font points) to add spacing:
+Here's a complete example based on the [default styles](https://github.com/dastrobu/apple-mail-mcp/blob/main/internal/richtext/config/default_styles.yaml):
 
 ```yaml
+# Color definitions using YAML anchors (x- prefix makes them ignorable extensions)
+x-colors:
+  dark_gray: &50_percent_gray "#7F7F7F"
+  blue: &blue "#0000FF"
+
+defaults:
+  font: "Helvetica"
+  size: 12
+  color: null
+
 styles:
+  # Headings - customize font, size, color, and spacing
   h1:
     font: "Helvetica-Bold"
-    size: 24
-    margin_top: 12 # 12 point empty line before heading
-    margin_bottom: 6 # 6 point empty line after heading
+    size: 20
+    color: null
+    margin_top: 10
+    margin_bottom: 5
 
-  code_block:
+  h2:
+    font: "Helvetica-Bold"
+    size: 18
+    color: null
+    margin_top: 8
+    margin_bottom: 4
+
+  h3:
+    font: "Helvetica-Bold"
+    size: 16
+    color: null
     margin_top: 6
-    margin_bottom: 6
+    margin_bottom: 2
+
+  # Inline styles
+  bold:
+    font: "Helvetica-Bold"
+
+  italic:
+    font: "Helvetica-Oblique"
+
+  strikethrough:
+    font: "Helvetica"
+    color: *50_percent_gray
+
+  bold_italic:
+    font: "Helvetica-BoldOblique"
+
+  code:
+    font: "Menlo-Regular"
+    size: 11
+    color: null
+
+  # Block styles
+  code_block:
+    font: "Menlo-Regular"
+    size: 11
+    color: null
+    margin_top: 6
+    margin_bottom: null
+    prefix:
+      content: "  "  # Indent code blocks with 2 spaces
 
   blockquote:
+    font: "Helvetica-Oblique"
+    size: null  # Inherits from defaults
+    color: *50_percent_gray
+    margin_top: 6
+    margin_bottom: 6
+    prefix:
+      content: "> "
+
+  list:
     margin_top: 6
     margin_bottom: 6
 
-  list:
-    margin_top: 6 # Applied to entire list, not individual items
-    margin_bottom: 6
+  list_item:
+    font: "Helvetica"
+    size: 12
+    color: null
+
+  horizontal_rule:
+    font: "Helvetica"
+    size: 1
+    color: *50_percent_gray
+
+  link:
+    color: *blue  # Or null to use Mail.app's default link color
 ```
 
-**Note:** Margins are applied to the block as a whole (e.g., entire list), not to individual items within the block.
+**Key Points:**
 
-See [docs/RICH_TEXT_DESIGN.md](docs/RICH_TEXT_DESIGN.md) for the complete styling specification and examples.
+- Colors use web format (`#RRGGBB`) and support YAML anchors for reusability
+- `margin_top` and `margin_bottom` are measured in font points
+- Set properties to `null` to inherit from defaults or parent elements
+- Margins apply to entire blocks (e.g., whole list), not individual items
+- Use `prefix.content` to add indentation or markers (code blocks, blockquotes)
+
+See [docs/RICH_TEXT_DESIGN.md](docs/RICH_TEXT_DESIGN.md) for the complete styling specification and advanced examples.
 
 **Output:**
 
@@ -765,7 +907,7 @@ See [docs/RICH_TEXT_DESIGN.md](docs/RICH_TEXT_DESIGN.md) for the complete stylin
 
 - **Go**: Main server implementation using the MCP Go SDK
 - **JXA (JavaScript for Automation)**: Scripts embedded in the binary for Mail.app interaction
-- **STDIO Transport**: Simple, stateless communication protocol
+- **Dual Transport Support**: HTTP (recommended) and STDIO transports for flexible deployment
 
 All JXA scripts are embedded at compile time using `//go:embed`, making the server a single, self-contained binary.
 
@@ -829,6 +971,4 @@ For strikethrough and links, the text is styled distinctively (different color/f
 
 MIT License - see LICENSE file for details
 
-## Acknowledgments
 
-Built with the [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk) from Anthropic.
