@@ -6,6 +6,13 @@ A Model Context Protocol (MCP) server providing programmatic access to macOS Mai
 
 This MCP server enables AI assistants and other MCP clients to interact with Apple Mail on macOS. It provides read-only access to mailboxes, messages, and search functionality through a clean, typed interface.
 
+## Security & Privacy
+
+- **Human-in-the-loop design**: No emails are sent automatically - all drafts require manual sending. This prevents agents from sending emails without human oversight.
+- No data transmitted outside of the MCP connection
+- Runs locally on your machine
+- Mail.app's security and permissions apply
+
 ## Features
 
 - **List Accounts**: Enumerate all configured email accounts with their properties
@@ -13,21 +20,19 @@ This MCP server enables AI assistants and other MCP clients to interact with App
 - **Get Message Content**: Fetch detailed content of individual messages
 - **Get Selected Messages**: Retrieve currently selected message(s) in Mail.app
 - **Reply to Message**: Create a reply to a message and save it as a draft
+- **Create Outgoing Message**: Create new email drafts with optional Markdown formatting
+- **Rich Text Support**: Format emails with Markdown (headings, bold, italic, lists, code blocks, and more)
 
 ## Requirements
 
 - macOS (Mail.app is macOS-only)
-- Go 1.25 or later
+- Go 1.26 or later
 - Mail.app must be running and configured with at least one email account
-- Automation permissions for the terminal/application running the server (see [Troubleshooting](#troubleshooting))
+- Automation permissions for the terminal/application running the server
 
 ## Installation
 
-### From Source
-
 ```bash
-git clone https://github.com/dastrobu/apple-mail-mcp.git
-cd apple-mail-mcp
 go build -o apple-mail-mcp
 ```
 
@@ -37,34 +42,22 @@ The server supports two transport modes: STDIO (default) and HTTP.
 
 ### STDIO Transport (Default)
 
-For use with MCP clients like Claude Desktop:
-
 ```bash
 ./apple-mail-mcp
 ```
 
-Or explicitly:
-
-```bash
-./apple-mail-mcp --transport=stdio
-```
-
 ### HTTP Transport
 
-For web-based clients or development:
-
 ```bash
-# Start HTTP server on default port 8787
+# Default port 8787
 ./apple-mail-mcp --transport=http
 
-# Start on custom port
+# Custom port
 ./apple-mail-mcp --transport=http --port=3000
 
-# Start on custom host and port
+# Custom host and port
 ./apple-mail-mcp --transport=http --host=0.0.0.0 --port=3000
 ```
-
-The HTTP server provides a streamable HTTP transport compatible with MCP clients.
 
 ### Command-Line Options
 
@@ -73,6 +66,7 @@ The HTTP server provides a streamable HTTP transport compatible with MCP clients
 --port=PORT              HTTP port (default: 8787, only used with --transport=http)
 --host=HOST              HTTP host (default: localhost, only used with --transport=http)
 --debug                  Enable debug logging of tool calls and results to stderr
+--rich-text-styles=PATH  Path to custom rich text styles YAML file (uses embedded default if not specified)
 --help                   Show help message
 ```
 
@@ -82,105 +76,20 @@ TRANSPORT=http
 PORT=8787
 HOST=localhost
 DEBUG=true
+RICH_TEXT_STYLES=/path/to/custom_styles.yaml
 ```
 
-Command-line flags take precedence over environment variables. You can also use a `.env` file for local development.
+### Debug Mode
 
-#### Debug Mode
-
-When `--debug` is enabled, the server logs all MCP protocol interactions and JXA script diagnostics to stderr, including:
-- **Initialize requests**: Client capabilities and initialization parameters
-- **Tools/list requests**: When the client requests the list of available tools
-- **Tool calls**: Input parameters for each tool invocation
-- **Tool results**: Output data or errors from tool execution
-- **JXA Script Logs**: Diagnostic messages from JXA scripts (errors, warnings, etc.)
-
-Example debug output:
-```
-[DEBUG] MCP Request: tools/call
-Params: {
-  "name": "list_drafts",
-  "arguments": {"account": "user@example.com", "limit": 10}
-}
-
-[DEBUG] JXA Script Logs:
-Error reading CC recipients count: Error: Can't get object.
-Error reading mailbox name: Error: Can't get object.
-
-[DEBUG] MCP Response: tools/call
-Result: { "content": [...] }
-```
-
-This is useful for troubleshooting and understanding what data the MCP client is requesting and what errors occur during script execution. See [DEBUG_LOGGING.md](DEBUG_LOGGING.md) for detailed information about debug logging.
+When `--debug` is enabled, the server logs all MCP protocol interactions and JXA script diagnostics to stderr, including tool calls, results, and JXA script logs. See [DEBUG_LOGGING.md](DEBUG_LOGGING.md) for details.
 
 ```bash
 ./apple-mail-mcp --debug
 ```
 
-Example debug output:
-```
-[DEBUG] MCP Request: initialize
-Params: {
-  "capabilities": {
-    "roots": {
-      "listChanged": true
-    }
-  },
-  "clientInfo": {
-    "name": "claude-desktop",
-    "version": "1.0.0"
-  },
-  "protocolVersion": "2024-11-05"
-}
-[DEBUG] MCP Response: initialize
-Result: {
-  "capabilities": {
-    "tools": {}
-  },
-  "protocolVersion": "2024-11-05",
-  "serverInfo": {
-    "name": "apple-mail",
-    "version": "0.1.0"
-  }
-}
-[DEBUG] MCP Request: tools/list
-[DEBUG] MCP Response: tools/list
-Result: {
-  "tools": [
-    {
-      "name": "list_accounts",
-      "description": "Lists all configured email accounts..."
-    },
-    ...
-  ]
-}
-[DEBUG] MCP Request: tools/call
-Params: {
-  "name": "list_accounts",
-  "arguments": {
-    "enabled": true
-  }
-}
-[DEBUG] MCP Response: tools/call
-Result: {
-  "content": [
-    {
-      "type": "text",
-      "text": "{\"accounts\":[{\"name\":\"Work\",\"enabled\":true}],\"count\":1}"
-    }
-  ]
-}
-```
-
-Since the server uses STDIO for MCP communication (on stdout), debug logs are written to stderr and won't interfere with the protocol.
-
-On first run, the server performs a connectivity check to verify Mail.app is accessible. If this fails, see the [Troubleshooting](#troubleshooting) section below.
-
 ### Configuration
 
-#### For STDIO Transport (Claude Desktop)
-
-Add to your MCP client configuration (e.g., Claude Desktop):
+#### For STDIO Transport
 
 ```json
 {
@@ -194,105 +103,33 @@ Add to your MCP client configuration (e.g., Claude Desktop):
 
 #### For HTTP Transport
 
-Configure your MCP client to connect to:
 ```
 http://localhost:8787
 ```
-
-Or the custom host/port you specified with `--port` flag or `PORT` environment variable.
 
 ## Troubleshooting
 
 ### Automation Permission Errors
 
-If you see an error like:
+If you see:
 ```
 Mail.app startup check failed: osascript execution failed: signal: killed
 ```
 
-This means macOS is blocking the server from controlling Mail.app. You need to grant automation permissions:
+Grant automation permissions:
 
-#### Option 1: Using System Settings (Recommended)
+1. Open **System Settings** → **Privacy & Security** → **Automation**
+2. Find the application running the server (Terminal, Claude, etc.)
+3. Enable the checkbox next to **Mail**
+4. Restart the MCP server
 
-1. Open **System Settings** (or **System Preferences** on older macOS)
-2. Go to **Privacy & Security** → **Automation**
-3. Find the application running the server in the list:
-   - For Terminal: Look for **Terminal** or **iTerm**
-   - For Claude Desktop: Look for **Claude**
-   - For other apps: Look for the parent application name
-4. Enable the checkbox next to **Mail** for that application
-5. Restart the MCP server
+**Alternative:** Run the server from Terminal to trigger the permission prompt, then click **OK**.
 
-#### Option 2: Triggering the Permission Dialog
-
-If the app doesn't appear in Automation settings:
-
-1. Run the server manually from Terminal to trigger the permission prompt:
-   ```bash
-   ./apple-mail-mcp
-   ```
-2. macOS should show a dialog asking: "Terminal would like to control Mail.app"
-3. Click **OK** to grant permission
-4. The server should now work
-
-#### Option 3: Using tccutil (Advanced)
-
-For automation or CI/CD scenarios, you can use `tccutil` to reset permissions:
-
-```bash
-# Reset automation permissions (forces a new prompt)
-tccutil reset AppleEvents
-
-# Then run the server to trigger the permission dialog
-./apple-mail-mcp
-```
-
-**Note**: After granting permissions, you may need to restart the application running the MCP server (e.g., Claude Desktop, Terminal) for changes to take effect.
+**Note:** You may need to restart the application running the MCP server for changes to take effect.
 
 ### Mail.app Not Running
 
-If you see:
-```
-Mail.app is not running. Please start Mail.app and try again.
-```
-
-Simply open Mail.app and try again. Mail.app must be running for the server to work.
-
-### Server Exits Immediately
-
-The server performs a startup check to verify Mail.app is accessible. If the check fails, the server will exit with an error message. Common causes:
-
-1. Mail.app is not running → Start Mail.app
-2. Missing automation permissions → See [Automation Permission Errors](#automation-permission-errors) above
-3. Mail.app is starting up → Wait a few seconds and try again
-
-## Examples
-
-### Testing HTTP Transport
-
-You can test the HTTP transport using curl:
-
-```bash
-# Start the server (uses default port 8787)
-./apple-mail-mcp --transport=http
-
-# Or use environment variable
-TRANSPORT=http PORT=8787 ./apple-mail-mcp
-
-# In another terminal, test the endpoint
-# Note: Proper MCP clients will handle session management
-curl -i http://localhost:8787/
-
-# Expected response:
-# HTTP/1.1 400 Bad Request
-# Bad Request: GET requires an Mcp-Session-Id header
-```
-
-For actual MCP communication over HTTP, use an MCP client library that supports the streamable HTTP transport protocol.
-
-### Using with Claude Desktop (STDIO)
-
-The default STDIO transport is designed for use with MCP clients like Claude Desktop. Simply add the configuration as shown in the [Configuration](#configuration) section above.
+Simply open Mail.app. It must be running for the server to work.
 
 ## Available Tools
 
@@ -304,14 +141,6 @@ Lists all configured email accounts in Apple Mail.
 - `enabled` (boolean, optional): Filter to only show enabled accounts (default: false)
 
 **Output:**
-- Array of account objects with:
-  - `name`: Account name
-  - `enabled`: Whether the account is enabled
-  - `emailAddresses`: Array of email addresses associated with the account
-  - `mailboxCount`: Number of mailboxes in the account
-- `count`: Total number of accounts
-
-**Example Output:**
 ```json
 {
   "accounts": [
@@ -330,9 +159,6 @@ Lists all configured email accounts in Apple Mail.
 
 Lists all available mailboxes across all Mail accounts.
 
-**Output:**
-- Array of mailbox objects with name and account information
-
 ### get_message_content
 
 Fetches the full content of a specific message including body, headers, recipients, and attachments.
@@ -350,15 +176,6 @@ Fetches the full content of a specific message including body, headers, recipien
   - Status: readStatus, flaggedStatus
   - Recipients: toRecipients, ccRecipients, bccRecipients (with name and address)
   - Attachments: array of attachment objects with name, fileSize, and downloaded status
-  - Note: mimeType is not included for attachments due to Mail.app API limitations
-
-**Error Handling:**
-- The tool gracefully handles missing or unavailable fields
-- If a field cannot be accessed, it returns a safe default value (empty string, empty array, etc.)
-- Clear error messages are provided for common issues:
-  - Invalid account or mailbox names
-  - Message not found or has been deleted
-  - Missing required parameters
 
 ### get_selected_messages
 
@@ -368,27 +185,6 @@ Gets the currently selected message(s) in the frontmost Mail.app viewer window.
 - None (operates on current selection)
 
 **Output:**
-- Object containing:
-  - `count`: Number of selected messages
-  - `messages`: Array of message objects, each with:
-    - `id`: Unique message identifier
-    - `subject`: Subject line
-    - `sender`: Sender email address
-    - `dateReceived`: When the message was received (ISO 8601)
-    - `dateSent`: When the message was sent (ISO 8601)
-    - `readStatus`: Whether the message has been read
-    - `flaggedStatus`: Whether the message is flagged
-    - `junkMailStatus`: Whether the message is marked as junk
-    - `mailbox`: Name of the mailbox containing the message
-    - `account`: Name of the account containing the message
-
-**Behavior:**
-- Returns empty array if no messages are selected
-- Returns error if no Mail viewer windows are open
-- Can return multiple messages if multiple are selected
-- Selection state is transient and can change between calls
-
-**Example Output:**
 ```json
 {
   "count": 1,
@@ -411,15 +207,15 @@ Gets the currently selected message(s) in the frontmost Mail.app viewer window.
 
 ### reply_to_message
 
-Creates a reply to a specific message and saves it as a draft in the Drafts mailbox. Mail.app automatically includes the quoted original message. The reply is NOT sent automatically - it remains in drafts for review and manual sending.
+Creates a reply to a specific message and saves it as a draft in the Drafts mailbox. Mail.app automatically includes the quoted original message. The reply is NOT sent automatically.
 
 **Parameters:**
 - `account` (string, required): Name of the email account
 - `mailbox` (string, required): Name of the mailbox containing the message to reply to
 - `message_id` (integer, required): The unique ID of the message to reply to
-- `reply_content` (string, required): The content/body of the reply message (will be prepended to the automatically quoted original message)
+- `reply_content` (string, required): The content/body of the reply message
 - `opening_window` (boolean, optional): Whether to show the window for the reply message. Default is false.
-- `reply_to_all` (boolean, optional): Whether to reply to all recipients. Default is false (reply to sender only).
+- `reply_to_all` (boolean, optional): Whether to reply to all recipients. Default is false.
 
 **Output:**
 - Object containing:
@@ -429,75 +225,121 @@ Creates a reply to a specific message and saves it as a draft in the Drafts mail
   - `drafts_mailbox`: Name of the Drafts mailbox where the reply was saved
   - `message`: Confirmation message
 
-**Behavior:**
-- Creates a reply with "Re: " prefix on the subject
-- Sets the recipient to the original message sender (or all recipients if `reply_to_all` is true)
-- Mail.app automatically formats and includes the quoted original message
-- Your `reply_content` is prepended to the automatic quote
-- Saves the reply in the account's Drafts mailbox (not sent)
-- Maintains email thread context with proper headers
-
-**Error Handling:**
-- Clear error messages for invalid account or mailbox names
-- Message not found or has been deleted
-- Missing Drafts mailbox
-- Missing required parameters
-
 **Important Notes:**
 - The returned `draft_id` is obtained after a 4-second sync delay
-- If you create multiple drafts rapidly, wait 4+ seconds between operations
-- For detailed information about draft ID reliability and limitations, see [docs/DRAFT_MANAGEMENT.md](docs/DRAFT_MANAGEMENT.md)
+- If creating multiple drafts rapidly, wait 4+ seconds between operations
+- See [docs/DRAFT_MANAGEMENT.md](docs/DRAFT_MANAGEMENT.md) for details
+
+### create_outgoing_message
+
+Creates a new outgoing email message with optional Markdown formatting. The message is saved but NOT sent automatically - you must send it manually in Mail.app.
+
+**Parameters:**
+- `subject` (string, required): Subject line of the email
+- `content` (string, required): Email body content (supports Markdown formatting when `content_format` is "markdown")
+- `content_format` (string, optional): Content format: "plain" or "markdown". Default is "markdown"
+- `to_recipients` (array of strings, required): List of To recipient email addresses
+- `cc_recipients` (array of strings, optional): List of CC recipient email addresses
+- `bcc_recipients` (array of strings, optional): List of BCC recipient email addresses
+- `sender` (string, optional): Sender email address (uses default account if omitted)
+- `opening_window` (boolean, optional): Whether to show the compose window. Default is false
+
+**Rich Text Formatting:**
+
+When `content_format` is set to "markdown", the content is parsed as Markdown and rendered with rich text styling:
+
+**Supported Markdown Elements:**
+- **Headings**: `# H1` through `###### H6`
+- **Bold**: `**bold text**`
+- **Italic**: `*italic text*`
+- **Bold+Italic**: `***bold and italic text***`
+- **Strikethrough**: `~~strikethrough text~~`
+- **Inline Code**: `` `code` ``
+- **Code Blocks**: ` ```code block``` `
+- **Blockquotes**: `> quote`
+- **Lists**: Unordered (`-`, `*`) and ordered (`1.`, `2.`)
+- **Nested Lists**: Up to 4 levels deep
+- **Links**: `[text](url)` (rendered as "text (url)")
+- **Horizontal Rules**: `---`
+- **Hard Line Breaks**: Two spaces at end of line creates line break within paragraph
+
+**Example:**
+```json
+{
+  "subject": "Project Update",
+  "content": "# Weekly Report\n\nThis week we:\n\n- Completed **Phase 1**\n- Started *Phase 2*\n\n## Code Changes\n\n```\nfunction example() {\n  return true;\n}\n```",
+  "content_format": "markdown",
+  "to_recipients": ["team@example.com"],
+  "opening_window": false
+}
+```
+
+**Custom Styling:**
+
+You can customize rich text styling by providing a YAML configuration file:
+
+```bash
+./apple-mail-mcp --rich-text-styles=/path/to/custom_styles.yaml
+```
+
+**Margin Support:**
+
+Block elements (headings, code blocks, blockquotes, lists) support `margin_top` and `margin_bottom` properties (measured in font points) to add spacing:
+
+```yaml
+styles:
+  h1:
+    font: "Helvetica-Bold"
+    size: 24
+    margin_top: 12    # 12 point empty line before heading
+    margin_bottom: 6   # 6 point empty line after heading
+  
+  code_block:
+    margin_top: 6
+    margin_bottom: 6
+  
+  blockquote:
+    margin_top: 6
+    margin_bottom: 6
+  
+  list:
+    margin_top: 6     # Applied to entire list, not individual items
+    margin_bottom: 6
+```
+
+**Note:** Margins are applied to the block as a whole (e.g., entire list), not to individual items within the block.
+
+See [docs/RICH_TEXT_DESIGN.md](docs/RICH_TEXT_DESIGN.md) for the complete styling specification and examples.
+
+**Output:**
+- Object containing:
+  - `outgoing_id`: ID of the created OutgoingMessage
+  - `subject`: Subject line
+  - `sender`: Sender email address
+  - `to_recipients`: Array of To recipient addresses
+  - `cc_recipients`: Array of CC recipient addresses
+  - `bcc_recipients`: Array of BCC recipient addresses
+  - `message`: Confirmation message
+  - `warning`: (optional) Warning if some recipients couldn't be added
+
+**Important Notes:**
+- The OutgoingMessage only exists in memory while Mail.app is running
+- For persistent drafts that survive Mail.app restart, use `reply_to_message` instead
+- The message is NOT sent automatically - manual sending required
+- Default format is Markdown (rich text enabled by default)
+- Plain text content works as Markdown with no special characters (renders as single paragraph)
+- Use `content_format: "plain"` to explicitly bypass Markdown parsing
+- Rich text rendering errors fail immediately with clear error messages (no silent fallback to plain text)
 
 ## Architecture
 
-The server is built with:
 - **Go**: Main server implementation using the MCP Go SDK
 - **JXA (JavaScript for Automation)**: Scripts embedded in the binary for Mail.app interaction
-  - See [JXA Documentation](https://developer.apple.com/library/archive/releasenotes/InterapplicationCommunication/RN-JavaScriptForAutomation/Articles/Introduction.html#//apple_ref/doc/uid/TP40014508) for more details
-  - See [Mac Automation Scripting Guide](https://developer.apple.com/library/archive/documentation/LanguagesUtilities/Conceptual/MacAutomationScriptingGuide/index.html#//apple_ref/doc/uid/TP40016239-CH56-SW1) for comprehensive automation documentation
-  - See [JXA Resources](https://bru6.de/jxa/) for additional JXA references and examples
 - **STDIO Transport**: Simple, stateless communication protocol
 
 All JXA scripts are embedded at compile time using `//go:embed`, making the server a single, self-contained binary.
 
 ## Development
-
-### Git Hooks
-
-This project includes a pre-commit hook that automatically runs `go fmt` on all staged Go files before committing. This ensures consistent code formatting across the project.
-
-#### Installing Git Hooks
-
-Run the installation script:
-
-```bash
-make install-hooks
-```
-
-Or manually:
-
-```bash
-./scripts/install-hooks.sh
-```
-
-The pre-commit hook will:
-- Run `go fmt` on all staged `.go` files
-- Automatically stage the formatted files
-- Only run if there are staged Go files
-
-#### Manual Formatting
-
-You can also format code manually:
-
-```bash
-make fmt
-```
-
-Or directly:
-
-```bash
-gofmt -w .
-```
 
 ### Build
 
@@ -505,10 +347,18 @@ gofmt -w .
 make build
 ```
 
-### Test JXA Scripts
+### Git Hooks
+
+Install pre-commit hooks that run `go fmt`:
 
 ```bash
-make test-scripts
+make install-hooks
+```
+
+### Format
+
+```bash
+make fmt
 ```
 
 ### Clean
@@ -517,81 +367,34 @@ make test-scripts
 make clean
 ```
 
-## Project Structure
-
-```
-apple-mail-mcp/
-├── cmd/
-│   └── apple-mail-mcp/      # Main application entry point
-│       └── main.go
-├── internal/
-│   ├── jxa/                  # JXA script execution
-│   │   └── executor.go
-│   └── tools/                # MCP tool implementations
-│       ├── scripts/          # Embedded JXA scripts
-│       │   ├── list_accounts.js
-│       │   ├── list_mailboxes.js
-│       │   ├── get_message_content.js
-│       │   ├── get_selected_messages.js
-│       │   ├── reply_to_message.js
-│       │   ├── list_drafts.js
-│       │   ├── create_outgoing_message.js
-│       │   ├── list_outgoing_messages.js
-│       │   └── replace_outgoing_message.js
-│       ├── list_accounts.go
-│       ├── list_mailboxes.go
-│       ├── get_message_content.go
-│       ├── get_selected_messages.go
-│       ├── reply_to_message.go
-│       ├── list_drafts.go
-│       ├── create_outgoing_message.go
-│       ├── list_outgoing_messages.go
-│       ├── replace_outgoing_message.go
-│       └── tools.go          # Tool registration and helpers
-├── go.mod
-├── go.sum
-├── Makefile
-└── README.md
-```
-
-The project follows standard Go project layout:
-- `cmd/` - Main application packages
-- `internal/` - Private application code
-  - `jxa/` - JXA script execution utilities
-  - `tools/` - Individual MCP tool implementations (one file per tool)
-  - `tools/scripts/` - JavaScript for Automation scripts embedded into the binary
-
-Each tool is implemented in its own file within `internal/tools/`, making the codebase modular and easy to maintain.
-
 ## Error Handling
 
-The server provides detailed error messages to help diagnose issues:
-
-- **Script Errors**: Clear messages indicating what went wrong in JXA scripts
-- **Missing Data**: Descriptive errors when expected data is not found
-- **Invalid Parameters**: Validation errors with hints about correct usage
-- **Argument Context**: Error messages include the arguments passed to help debugging
-
-All tools handle errors gracefully and return informative error messages rather than generic failures.
+The server provides detailed error messages including:
+- Script errors with clear descriptions
+- Missing data with descriptive errors
+- Invalid parameters with usage hints
+- Argument context for debugging
 
 ## Limitations
 
 - **macOS only**: Relies on Mail.app and JXA
-- **Mostly read-only**: Only the `reply_to_message` tool creates drafts; no emails are sent automatically
-- **Mail.app required**: Mail.app must be running for the server to work
-- **Attachment MIME types**: Due to Mail.app API limitations, MIME types are not available for attachments
+- **Mail.app required**: Mail.app must be running
+- **Attachment MIME types**: Not available due to Mail.app API limitations
 
-## Security & Privacy
+### Rich Text Limitations
 
-- All operations are read-only except `reply_to_message` which creates drafts
-- Draft replies are not sent automatically - they require manual review and sending
-- No data is transmitted outside of the MCP connection
-- The server runs locally on your machine
-- Mail.app's security and permissions apply
+Due to JXA and Mail.app RichText API constraints:
 
-## Contributing
+- **Strikethrough**: Rendered as styled text (gray color) but not actual strikethrough formatting. Mail.app's RichText API doesn't support true strikethrough via JXA.
+- **Links**: Rendered as "text (url)" format, not clickable links. Creating clickable links programmatically via JXA is not straightforward with Mail.app's API.
+- **Background colors**: Not supported by Mail.app's RichText API (only foreground colors)
+- **Tables**: Not implemented (would require complex grid layout)
+- **Images**: Use Mail.app attachments instead
+- **Dark mode**: All colors use character-level styling for consistency. Mail.app automatically adapts character-level colors in dark mode.
 
-Contributions are welcome! Please feel free to submit issues or pull requests.
+For strikethrough and links, the text is styled distinctively (different color/font) to indicate the formatting intent, but the actual strikethrough line or clickable link behavior is not available through JXA automation.
+
+
 
 ## License
 

@@ -11,6 +11,7 @@ import (
 	"github.com/dastrobu/apple-mail-mcp/internal/jxa"
 	applog "github.com/dastrobu/apple-mail-mcp/internal/log"
 	"github.com/dastrobu/apple-mail-mcp/internal/opts"
+	"github.com/dastrobu/apple-mail-mcp/internal/richtext"
 	"github.com/dastrobu/apple-mail-mcp/internal/tools"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -32,37 +33,50 @@ func main() {
 	}
 }
 
+// setupLogger creates and adds the appropriate logger to the context
+func setupLogger(ctx context.Context, debug bool) context.Context {
+	if debug {
+		return applog.WithLogger(ctx, log.Default())
+	}
+	return applog.WithLogger(ctx, log.New(io.Discard, "", 0))
+}
+
 // debugMiddleware logs all MCP requests and responses when debug is enabled
-func debugMiddleware(next mcp.MethodHandler) mcp.MethodHandler {
-	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
-		// Log the request
-		if req != nil {
-			p := req.GetParams()
-			j, _ := json.MarshalIndent(p, "", "  ")
-			log.Printf("[DEBUG] MCP Request: %s\nParams: %s\n", method, string(j))
-		} else {
-			log.Printf("[DEBUG] MCP Request: %s\n", method)
+func debugMiddleware(debug bool) func(mcp.MethodHandler) mcp.MethodHandler {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			// Add logger to context for this request
+			ctx = setupLogger(ctx, debug)
+
+			// Log the request
+			if req != nil {
+				p := req.GetParams()
+				j, _ := json.MarshalIndent(p, "", "  ")
+				log.Printf("[DEBUG] MCP Request: %s\nParams: %s\n", method, string(j))
+			} else {
+				log.Printf("[DEBUG] MCP Request: %s\n", method)
+			}
+
+			// Call the next handler
+			result, err := next(ctx, method, req)
+
+			// Log the response
+			if err != nil {
+				log.Printf("[DEBUG] MCP Response: %s\nError: %v\n", method, err)
+			} else if result != nil {
+				resultJSON, _ := json.MarshalIndent(result, "", "  ")
+				log.Printf("[DEBUG] MCP Response: %s\nResult: %s\n", method, string(resultJSON))
+			} else {
+				log.Printf("[DEBUG] MCP Response: %s\n", method)
+			}
+
+			return result, err
 		}
-
-		// Call the next handler
-		result, err := next(ctx, method, req)
-
-		// Log the response
-		if err != nil {
-			log.Printf("[DEBUG] MCP Response: %s\nError: %v\n", method, err)
-		} else if result != nil {
-			resultJSON, _ := json.MarshalIndent(result, "", "  ")
-			log.Printf("[DEBUG] MCP Response: %s\nResult: %s\n", method, string(resultJSON))
-		} else {
-			log.Printf("[DEBUG] MCP Response: %s\n", method)
-		}
-
-		return result, err
 	}
 }
 
 // createServer creates and configures a new MCP server instance
-func createServer(options *opts.Options) *mcp.Server {
+func createServer(options *opts.Options, richtextConfig *richtext.PreparedConfig) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    serverName,
 		Version: serverVersion,
@@ -70,11 +84,11 @@ func createServer(options *opts.Options) *mcp.Server {
 
 	// Add debug middleware if debug mode is enabled
 	if options.Debug {
-		srv.AddReceivingMiddleware(debugMiddleware)
+		srv.AddReceivingMiddleware(debugMiddleware(options.Debug))
 	}
 
 	// Register all tools
-	tools.RegisterAll(srv)
+	tools.RegisterAll(srv, richtextConfig)
 
 	return srv
 }
@@ -83,10 +97,21 @@ func run(options *opts.Options) error {
 	ctx := context.Background()
 
 	// Always add a logger to context (real logger if debug, no-op otherwise)
+	ctx = setupLogger(ctx, options.Debug)
+
+	// Load rich text rendering configuration
+	richtextConfig, err := richtext.LoadConfig(options.RichTextStyles)
+	if err != nil {
+		return fmt.Errorf("failed to load rich text styles configuration: %w", err)
+	}
 	if options.Debug {
-		ctx = applog.WithLogger(ctx, log.Default())
-	} else {
-		ctx = applog.WithLogger(ctx, log.New(io.Discard, "", 0))
+		log.Printf("[DEBUG] Rich text styles loaded from: %s\n",
+			func() string {
+				if options.RichTextStyles == "" {
+					return "embedded default"
+				}
+				return options.RichTextStyles
+			}())
 	}
 
 	// Run startup check to verify Mail.app is accessible
@@ -118,7 +143,7 @@ For detailed troubleshooting, see: https://github.com/dastrobu/apple-mail-mcp#tr
 	// Log to stderr (stdout is used for MCP communication in stdio mode)
 	log.Printf("Apple Mail MCP Server v%s initialized\n", serverVersion)
 
-	srv := createServer(options)
+	srv := createServer(options, richtextConfig)
 
 	// Run the server with the selected transport
 	switch options.Transport {

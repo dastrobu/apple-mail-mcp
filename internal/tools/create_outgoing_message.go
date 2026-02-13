@@ -8,16 +8,26 @@ import (
 	"strings"
 
 	"github.com/dastrobu/apple-mail-mcp/internal/jxa"
+	"github.com/dastrobu/apple-mail-mcp/internal/richtext"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 //go:embed scripts/create_outgoing_message.js
 var createOutgoingMessageScript string
 
+// ContentFormat constants for email content formatting
+const (
+	ContentFormatPlain    = "plain"
+	ContentFormatMarkdown = "markdown"
+	// Default content format
+	ContentFormatDefault = ContentFormatMarkdown
+)
+
 // CreateOutgoingMessageInput defines input parameters for create_outgoing_message tool
 type CreateOutgoingMessageInput struct {
 	Subject       string   `json:"subject" jsonschema:"Subject line of the email"`
-	Content       string   `json:"content" jsonschema:"Body text of the email"`
+	Content       string   `json:"content" jsonschema:"Email body content (supports Markdown formatting)"`
+	ContentFormat string   `json:"content_format,omitempty" jsonschema:"Content format: 'plain' or 'markdown'. Default is 'markdown'"`
 	ToRecipients  []string `json:"to_recipients" jsonschema:"List of To recipient email addresses"`
 	CcRecipients  []string `json:"cc_recipients,omitempty" jsonschema:"List of CC recipient email addresses (optional)"`
 	BccRecipients []string `json:"bcc_recipients,omitempty" jsonschema:"List of BCC recipient email addresses (optional)"`
@@ -26,11 +36,11 @@ type CreateOutgoingMessageInput struct {
 }
 
 // RegisterCreateOutgoingMessage registers the create_outgoing_message tool with the MCP server
-func RegisterCreateOutgoingMessage(srv *mcp.Server) {
+func RegisterCreateOutgoingMessage(srv *mcp.Server, richtextConfig *richtext.PreparedConfig) {
 	mcp.AddTool(srv,
 		&mcp.Tool{
 			Name:        "create_outgoing_message",
-			Description: "Creates a new outgoing email message and returns its OutgoingMessage ID immediately (no delay). The message is saved but not sent. Use replace_outgoing_message to modify it. Returns OutgoingMessage.id() which works with replace_outgoing_message. Note: The OutgoingMessage only exists in memory while Mail.app is running. If you need persistent drafts that survive Mail.app restart, use reply_to_message instead.",
+			Description: "Creates a new outgoing email message with optional Markdown formatting and returns its OutgoingMessage ID immediately (no delay). The message is saved but not sent. Use replace_outgoing_message to modify it. Returns OutgoingMessage.id() which works with replace_outgoing_message. Note: The OutgoingMessage only exists in memory while Mail.app is running. If you need persistent drafts that survive Mail.app restart, use reply_to_message instead.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:           "Create Outgoing Message",
 				ReadOnlyHint:    false,
@@ -39,11 +49,13 @@ func RegisterCreateOutgoingMessage(srv *mcp.Server) {
 				OpenWorldHint:   new(true),
 			},
 		},
-		handleCreateOutgoingMessage,
+		func(ctx context.Context, request *mcp.CallToolRequest, input CreateOutgoingMessageInput) (*mcp.CallToolResult, any, error) {
+			return handleCreateOutgoingMessage(ctx, request, input, richtextConfig)
+		},
 	)
 }
 
-func handleCreateOutgoingMessage(ctx context.Context, request *mcp.CallToolRequest, input CreateOutgoingMessageInput) (*mcp.CallToolResult, any, error) {
+func handleCreateOutgoingMessage(ctx context.Context, request *mcp.CallToolRequest, input CreateOutgoingMessageInput, richtextConfig *richtext.PreparedConfig) (*mcp.CallToolResult, any, error) {
 	// Trim and validate subject
 	subject := strings.TrimSpace(input.Subject)
 	if subject == "" {
@@ -59,6 +71,42 @@ func handleCreateOutgoingMessage(ctx context.Context, request *mcp.CallToolReque
 	openingWindow := false
 	if input.OpeningWindow != nil {
 		openingWindow = *input.OpeningWindow
+	}
+
+	// Determine content format (default to markdown)
+	contentFormat := strings.ToLower(strings.TrimSpace(input.ContentFormat))
+	if contentFormat == "" {
+		contentFormat = ContentFormatDefault
+	}
+
+	// Process content based on format
+	var contentJSON string
+	switch contentFormat {
+	case ContentFormatMarkdown:
+		// Parse Markdown and convert to styled blocks
+		doc, err := richtext.ParseMarkdown([]byte(input.Content))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to parse Markdown: %w", err)
+		}
+
+		styledBlocks, err := richtext.ConvertMarkdownToStyledBlocks(doc, []byte(input.Content), richtextConfig)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to convert Markdown to styled blocks: %w", err)
+		}
+
+		// Encode styled blocks as JSON
+		encoded, err := json.Marshal(styledBlocks)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to encode styled blocks: %w", err)
+		}
+		contentJSON = string(encoded)
+
+	case ContentFormatPlain:
+		// Plain text - just pass the content directly
+		contentJSON = ""
+
+	default:
+		return nil, nil, fmt.Errorf("invalid content_format: %s (must be '%s' or '%s')", contentFormat, ContentFormatPlain, ContentFormatMarkdown)
 	}
 
 	// Encode recipient arrays as JSON strings
@@ -88,6 +136,8 @@ func handleCreateOutgoingMessage(ctx context.Context, request *mcp.CallToolReque
 	data, err := jxa.Execute(ctx, createOutgoingMessageScript,
 		subject,
 		input.Content,
+		contentFormat,
+		contentJSON,
 		string(toRecipientsJSON),
 		ccRecipientsJSON,
 		bccRecipientsJSON,

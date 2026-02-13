@@ -10,13 +10,15 @@ function run(argv) {
     logs.push(message);
   }
 
-  // Parse arguments: accountName, mailboxPathStr (JSON), messageId, replyContent, openingWindow, replyToAll
+  // Parse arguments: accountName, mailboxPathStr (JSON), messageId, replyContent, contentFormat, contentJson, openingWindow, replyToAll
   const accountName = argv[0] || "";
   const mailboxPathStr = argv[1] || "";
   const messageId = argv[2] ? parseInt(argv[2]) : 0;
   const replyContent = argv[3] || "";
-  const openingWindow = argv[4] === "true";
-  const replyToAll = argv[5] === "true";
+  const contentFormat = argv[4] || "plain";
+  const contentJson = argv[5] || "";
+  const openingWindow = argv[6] === "true";
+  const replyToAll = argv[7] === "true";
 
   if (!accountName) {
     return JSON.stringify({
@@ -194,15 +196,29 @@ function run(argv) {
     const originalDate = targetMessage.dateSent();
     const dateStr = originalDate.toLocaleString();
 
-    // The OutgoingMessage.content property is a RichText object.
-    // You cannot assign a plain string directly (fails with
-    // "Can't convert types"). Use Mail.make to insert a paragraph
-    // into the content object.
-    Mail.make({
-      new: "paragraph",
-      withData: replyContent,
-      at: replyMessage.content,
-    });
+    // Set content based on format
+    if (contentFormat === "markdown" && contentJson) {
+      // Render styled blocks as rich text
+      try {
+        const styledBlocks = JSON.parse(contentJson);
+        renderStyledBlocks(Mail, replyMessage, styledBlocks, log);
+      } catch (e) {
+        return JSON.stringify({
+          success: false,
+          error: "Failed to render rich text: " + e.toString(),
+        });
+      }
+    } else {
+      // Plain text - The OutgoingMessage.content property is a RichText object.
+      // You cannot assign a plain string directly (fails with
+      // "Can't convert types"). Use Mail.make to insert a paragraph
+      // into the content object.
+      Mail.make({
+        new: "paragraph",
+        withData: replyContent,
+        at: replyMessage.content,
+      });
+    }
 
     // Save the reply message (required for non-visible messages)
     replyMessage.save();
@@ -239,5 +255,65 @@ function run(argv) {
       success: false,
       error: "Failed to create reply draft: " + e.toString(),
     });
+  }
+}
+
+/**
+ * Renders styled blocks as rich text in the message content
+ * @param {Application} Mail - Mail application object
+ * @param {Object} msg - Message object
+ * @param {Array} styledBlocks - Array of styled block objects
+ * @param {Function} log - Logging function
+ */
+function renderStyledBlocks(Mail, msg, styledBlocks, log) {
+  for (let i = 0; i < styledBlocks.length; i++) {
+    const block = styledBlocks[i];
+
+    // Create paragraph with styling (all properties are optional)
+    // Go code adds newlines to block.text, so no need to append "\n" here
+    const props = {};
+    if (block.font) {
+      props.font = block.font;
+    }
+    if (block.size) {
+      props.size = block.size;
+    }
+    if (block.color) {
+      props.color = block.color;
+    }
+
+    Mail.make({
+      new: "paragraph",
+      withData: block.text,
+      withProperties: props,
+      at: msg.content,
+    });
+
+    // Apply inline styles if present
+    if (block.inline_styles && block.inline_styles.length > 0) {
+      const paraIndex = msg.content.paragraphs.length - 1;
+
+      for (let j = 0; j < block.inline_styles.length; j++) {
+        const style = block.inline_styles[j];
+
+        try {
+          // Apply character-level styling
+          for (let charIdx = style.start; charIdx < style.end; charIdx++) {
+            const char = msg.content.paragraphs[paraIndex].characters[charIdx];
+            if (style.font) {
+              char.font = style.font;
+            }
+            if (style.size) {
+              char.size = style.size;
+            }
+            if (style.color) {
+              char.color = style.color;
+            }
+          }
+        } catch (e) {
+          log("Error applying inline style: " + e.toString());
+        }
+      }
+    }
   }
 }

@@ -10,10 +10,11 @@ import (
 
 // Options defines the command-line options for the MCP server
 type Options struct {
-	Transport string `long:"transport" env:"TRANSPORT" description:"Transport type: stdio or http" default:"stdio" choice:"stdio" choice:"http"`
-	Port      int    `long:"port" env:"PORT" description:"HTTP port (only used with --transport=http)" default:"8787"`
-	Host      string `long:"host" env:"HOST" description:"HTTP host (only used with --transport=http)" default:"localhost"`
-	Debug     bool   `long:"debug" env:"DEBUG" description:"Enable debug logging of tool calls and results to stderr"`
+	Transport      string `long:"transport" env:"TRANSPORT" description:"Transport type: stdio or http" default:"stdio" choice:"stdio" choice:"http"`
+	Port           int    `long:"port" env:"PORT" description:"HTTP port (only used with --transport=http)" default:"8787"`
+	Host           string `long:"host" env:"HOST" description:"HTTP host (only used with --transport=http)" default:"localhost"`
+	Debug          bool   `long:"debug" env:"DEBUG" description:"Enable debug logging of tool calls and results to stderr"`
+	RichTextStyles string `long:"rich-text-styles" env:"RICH_TEXT_STYLES" description:"Path to custom rich text styles YAML file (uses embedded default if not specified)"`
 }
 
 // Parse parses command-line arguments and environment variables

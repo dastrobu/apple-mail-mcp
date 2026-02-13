@@ -1,0 +1,105 @@
+# Example custom rich text styles configuration
+# This file demonstrates how to customize the appearance of Markdown-formatted emails
+
+defaults:
+  font: "Helvetica"
+  size: 13
+  color: "#2C3E50"
+
+styles:
+  # Headings with a blue color scheme
+  h1:
+    font: "Helvetica-Bold"
+    size: 28
+    color: "#2C3E50"
+    margin_top: 12
+    margin_bottom: 6
+  
+  h2:
+    font: "Helvetica-Bold"
+    size: 24
+    color: "#34495E"
+    margin_top: 10
+    margin_bottom: 5
+  
+  h3:
+    font: "Helvetica-Bold"
+    size: 20
+    color: "#34495E"
+    margin_top: 8
+    margin_bottom: 4
+  
+  h4:
+    font: "Helvetica-Bold"
+    size: 18
+    color: "#7F8C8D"
+    margin_top: 6
+    margin_bottom: 3
+  
+  h5:
+    font: "Helvetica-Bold"
+    size: 16
+    color: "#7F8C8D"
+    margin_top: 6
+    margin_bottom: 3
+  
+  h6:
+    font: "Helvetica-Bold"
+    size: 14
+    color: "#95A5A6"
+    margin_top: 6
+    margin_bottom: 3
+  
+  # Inline styles
+  bold:
+    font: "Helvetica-Bold"
+    color: "#2C3E50"
+  
+  italic:
+    font: "Helvetica-Oblique"
+    color: "#34495E"
+  
+  bold_italic:
+    font: "Helvetica-BoldOblique"
+    color: "#2C3E50"
+  
+  strikethrough:
+    font: "Helvetica"
+    color: "#95A5A6"
+  
+  code:
+    font: "Menlo-Regular"
+    size: 12
+    color: "#E74C3C"
+  
+  # Block styles
+  code_block:
+    font: "Menlo-Regular"
+    size: 12
+    color: "#2C3E50"
+    margin_top: 6
+    margin_bottom: 6
+  
+  blockquote:
+    font: "Helvetica-Oblique"
+    size: 13
+    color: "#7F8C8D"
+    margin_top: 6
+    margin_bottom: 6
+  
+  list:
+    margin_top: 6
+    margin_bottom: 6
+  
+  list_item:
+    font: "Helvetica"
+    size: 13
+    color: "#2C3E50"
+  
+  horizontal_rule:
+    font: "Helvetica"
+    size: 1
+    color: "#BDC3C7"
+  
+  link:
+    color: "#3498DB"
