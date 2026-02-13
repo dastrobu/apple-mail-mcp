@@ -127,6 +127,48 @@ apple-mail-mcp launchd create
 
 This will recreate the service with the new binary path.
 
+## Uninstalling
+
+### Homebrew
+
+**⚠️ IMPORTANT:** Remove the launchd service BEFORE uninstalling:
+
+```bash
+# Step 1: Remove the launchd service (if you created one)
+apple-mail-mcp launchd remove
+
+# Step 2: Uninstall the package
+brew uninstall apple-mail-mcp
+
+# Step 3 (optional): Remove logs
+rm -rf ~/Library/Logs/com.github.dastrobu.apple-mail-mcp/
+```
+
+**Why this order matters:** The `launchd remove` command needs the binary to properly unload and remove the service. If you uninstall first, you'll need to manually remove the plist file.
+
+**If you already uninstalled without removing the service:**
+
+```bash
+# Manually remove the plist and unload the service
+launchctl unload ~/Library/LaunchAgents/com.github.dastrobu.apple-mail-mcp.plist
+rm ~/Library/LaunchAgents/com.github.dastrobu.apple-mail-mcp.plist
+```
+
+### Manual Installation
+
+If you installed manually, remove the launchd service first, then delete the binary:
+
+```bash
+# Remove the launchd service
+apple-mail-mcp launchd remove
+
+# Remove the binary (adjust path as needed)
+rm /usr/local/bin/apple-mail-mcp
+
+# Optionally remove logs
+rm -rf ~/Library/Logs/com.github.dastrobu.apple-mail-mcp/
+```
+
 ## Usage
 
 The server supports two transport modes: **HTTP (recommended)** and STDIO.

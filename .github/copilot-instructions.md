@@ -941,6 +941,28 @@ This ensures that:
 - Plist template updates are applied (if any)
 - The new binary path is used (via the updated symlink)
 
+**Uninstall Process:**
+Users should remove the launchd service BEFORE uninstalling via Homebrew:
+```bash
+# Step 1: Remove the launchd service
+apple-mail-mcp launchd remove
+
+# Step 2: Uninstall the package
+brew uninstall apple-mail-mcp
+
+# Step 3 (optional): Remove logs
+rm -rf ~/Library/Logs/com.github.dastrobu.apple-mail-mcp/
+```
+
+**Why this order matters:** The `launchd remove` command needs the binary to properly unload and remove the service. If the binary is uninstalled first, users must manually clean up:
+```bash
+# Manual cleanup if binary was already removed
+launchctl unload ~/Library/LaunchAgents/com.github.dastrobu.apple-mail-mcp.plist
+rm ~/Library/LaunchAgents/com.github.dastrobu.apple-mail-mcp.plist
+```
+
+**Note:** GoReleaser doesn't support `uninstall` hooks in the `brews` configuration, so uninstall instructions are provided in the caveats and README.
+
 ## Documentation
 
 - Always update `README.md` when adding new tools or features
