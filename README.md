@@ -6,6 +6,8 @@ A Model Context Protocol (MCP) server providing programmatic access to macOS Mai
 
 This MCP server enables AI assistants and other MCP clients to interact with Apple Mail on macOS. It provides read-only access to mailboxes, messages, and search functionality through a clean, typed interface.
 
+> **Note on Draft Management**: Tools that create or modify drafts (`create_draft`, `reply_to_message`, `replace_draft`) have timing-dependent ID lookup. See [docs/DRAFT_MANAGEMENT.md](docs/DRAFT_MANAGEMENT.md) for detailed information about draft ID behavior, limitations, and best practices.
+
 ## Features
 
 - **List Accounts**: Enumerate all configured email accounts with their properties
@@ -88,13 +90,30 @@ Command-line flags take precedence over environment variables. You can also use 
 
 #### Debug Mode
 
-When `--debug` is enabled, the server logs all MCP protocol interactions to stderr, including:
+When `--debug` is enabled, the server logs all MCP protocol interactions and JXA script diagnostics to stderr, including:
 - **Initialize requests**: Client capabilities and initialization parameters
 - **Tools/list requests**: When the client requests the list of available tools
 - **Tool calls**: Input parameters for each tool invocation
 - **Tool results**: Output data or errors from tool execution
+- **JXA Script Logs**: Diagnostic messages from JXA scripts (errors, warnings, etc.)
 
-This is useful for troubleshooting and understanding what data the MCP client is requesting:
+Example debug output:
+```
+[DEBUG] MCP Request: tools/call
+Params: {
+  "name": "list_drafts",
+  "arguments": {"account": "user@example.com", "limit": 10}
+}
+
+[DEBUG] JXA Script Logs:
+Error reading CC recipients count: Error: Can't get object.
+Error reading mailbox name: Error: Can't get object.
+
+[DEBUG] MCP Response: tools/call
+Result: { "content": [...] }
+```
+
+This is useful for troubleshooting and understanding what data the MCP client is requesting and what errors occur during script execution. See [DEBUG_LOGGING.md](DEBUG_LOGGING.md) for detailed information about debug logging.
 
 ```bash
 ./apple-mail-mcp --debug
@@ -426,6 +445,11 @@ Creates a reply to a specific message and saves it as a draft in the Drafts mail
 - Missing Drafts mailbox
 - Missing required parameters
 
+**Important Notes:**
+- The returned `draft_id` is obtained after a 4-second sync delay
+- If you create multiple drafts rapidly, wait 4+ seconds between operations
+- For detailed information about draft ID reliability and limitations, see [docs/DRAFT_MANAGEMENT.md](docs/DRAFT_MANAGEMENT.md)
+
 ## Architecture
 
 The server is built with:
@@ -433,6 +457,7 @@ The server is built with:
 - **JXA (JavaScript for Automation)**: Scripts embedded in the binary for Mail.app interaction
   - See [JXA Documentation](https://developer.apple.com/library/archive/releasenotes/InterapplicationCommunication/RN-JavaScriptForAutomation/Articles/Introduction.html#//apple_ref/doc/uid/TP40014508) for more details
   - See [Mac Automation Scripting Guide](https://developer.apple.com/library/archive/documentation/LanguagesUtilities/Conceptual/MacAutomationScriptingGuide/index.html#//apple_ref/doc/uid/TP40016239-CH56-SW1) for comprehensive automation documentation
+  - See [JXA Resources](https://bru6.de/jxa/) for additional JXA references and examples
 - **STDIO Transport**: Simple, stateless communication protocol
 
 All JXA scripts are embedded at compile time using `//go:embed`, making the server a single, self-contained binary.

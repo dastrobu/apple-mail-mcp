@@ -11,7 +11,7 @@ function run(argv) {
   }
 
   // Parse arguments
-  const draftIdStr = argv[0] || "";
+  const outgoingIdStr = argv[0] || "";
   const rawNewSubject = argv[1] || "";
   const newContent = argv[2] || "";
   const toRecipientsJson = argv[3] || "";
@@ -20,45 +20,47 @@ function run(argv) {
   const newSender = argv[6] || "";
   const openingWindow = argv[7] === "true";
 
-  const draftId = draftIdStr ? parseInt(draftIdStr) : 0;
+  const outgoingId = outgoingIdStr ? parseInt(outgoingIdStr) : 0;
 
   // Validate required arguments
-  if (!draftId || draftId < 1) {
+  if (!outgoingId || outgoingId < 1) {
     return JSON.stringify({
       success: false,
-      error: "Draft ID is required and must be a positive integer",
+      error: "Outgoing message ID is required and must be a positive integer",
     });
   }
 
   try {
-    // Find the draft in the Drafts mailbox using whose() for fast lookup
-    const draftsMailbox = Mail.draftsMailbox();
+    // Find the OutgoingMessage by ID
+    const allOutgoing = Mail.outgoingMessages();
+    let foundMessage = null;
 
-    // Use whose() to filter for the specific draft ID
-    // This is MUCH faster than looping (constant time vs linear time)
-    const matchingDrafts = draftsMailbox.messages.whose({
-      id: draftId,
-    })();
+    for (let i = 0; i < allOutgoing.length; i++) {
+      if (allOutgoing[i].id() === outgoingId) {
+        foundMessage = allOutgoing[i];
+        break;
+      }
+    }
 
-    if (!matchingDrafts || matchingDrafts.length === 0) {
+    if (!foundMessage) {
       return JSON.stringify({
         success: false,
-        error: "Draft with ID " + draftId + " not found in Drafts mailbox",
+        error:
+          "OutgoingMessage with ID " +
+          outgoingId +
+          " not found. The message may have been sent, closed, or Mail.app may have been restarted.",
       });
     }
 
-    // Get the first (and should be only) matching draft
-    const draftMessage = matchingDrafts[0];
-
-    // Read existing properties from the draft
-    const existingSubject = draftMessage.subject();
-    const existingSender = draftMessage.sender();
-    const existingContent = draftMessage.content();
+    // Read existing properties from the OutgoingMessage
+    const existingSubject = foundMessage.subject();
+    const existingSender = foundMessage.sender();
+    const existingContent = foundMessage.content();
 
     // Read existing recipients
     const existingTo = [];
     try {
-      const toRecips = draftMessage.toRecipients();
+      const toRecips = foundMessage.toRecipients();
       for (let i = 0; i < toRecips.length; i++) {
         existingTo.push(toRecips[i].address());
       }
@@ -68,7 +70,7 @@ function run(argv) {
 
     const existingCc = [];
     try {
-      const ccRecips = draftMessage.ccRecipients();
+      const ccRecips = foundMessage.ccRecipients();
       for (let i = 0; i < ccRecips.length; i++) {
         existingCc.push(ccRecips[i].address());
       }
@@ -78,7 +80,7 @@ function run(argv) {
 
     const existingBcc = [];
     try {
-      const bccRecips = draftMessage.bccRecipients();
+      const bccRecips = foundMessage.bccRecipients();
       for (let i = 0; i < bccRecips.length; i++) {
         existingBcc.push(bccRecips[i].address());
       }
@@ -129,8 +131,8 @@ function run(argv) {
       }
     }
 
-    // Delete the old draft
-    Mail.delete(draftMessage);
+    // Delete the old OutgoingMessage
+    Mail.delete(foundMessage);
 
     // Create new outgoing message with updated properties
     const msgProps = {
@@ -148,7 +150,6 @@ function run(argv) {
     });
 
     // Add To recipients
-    // Use Mail.ToRecipient() constructor and push() - Mail.make() doesn't work
     for (let i = 0; i < finalTo.length; i++) {
       if (finalTo[i]) {
         try {
@@ -191,50 +192,13 @@ function run(argv) {
       at: msg.content,
     });
 
-    // Save the draft (required for visible: false messages)
+    // Save the new message
     msg.save();
 
-    // Wait for draft to be saved to Drafts mailbox
-    // Increased delay for Exchange accounts and slower systems
-    delay(4);
-
-    // Get the OutgoingMessage details
-    const newDraftSubject = msg.subject();
-    const newDraftSender = msg.sender();
-
-    // Find the actual draft in Drafts mailbox by subject using whose()
-    // Note: OutgoingMessage.id() is different from the Message.id() in Drafts
-    // Reuse draftsMailbox from earlier in the function
-
-    // Use whose() to find drafts with matching subject (fast constant-time lookup)
-    const newDrafts = draftsMailbox.messages.whose({
-      subject: newDraftSubject,
-    })();
-
-    // Get the most recent match by finding the one with the latest dateReceived
-    let newDraftId = null;
-    if (newDrafts && newDrafts.length > 0) {
-      let mostRecent = newDrafts[0];
-      let mostRecentDate = mostRecent.dateReceived();
-
-      for (let i = 1; i < newDrafts.length; i++) {
-        const currentDate = newDrafts[i].dateReceived();
-        if (currentDate > mostRecentDate) {
-          mostRecent = newDrafts[i];
-          mostRecentDate = currentDate;
-        }
-      }
-
-      newDraftId = mostRecent.id();
-    }
-
-    if (!newDraftId) {
-      return JSON.stringify({
-        success: false,
-        error:
-          "Draft was created but could not be found in Drafts mailbox. Please check Mail.app manually.",
-      });
-    }
+    // Get the new OutgoingMessage ID
+    const newOutgoingId = msg.id();
+    const newSubjectResult = msg.subject();
+    const newSenderResult = msg.sender();
 
     // Read back recipients
     const toAddrs = [];
@@ -269,7 +233,7 @@ function run(argv) {
 
     // Check if all recipients were added successfully
     let message =
-      "Draft replaced successfully (old draft deleted, new draft created with updated properties)";
+      "OutgoingMessage replaced successfully (old message deleted, new message created with updated properties)";
     let warning = null;
     const requestedToCount = finalTo.length;
     const requestedCcCount = finalCc.length;
@@ -283,7 +247,7 @@ function run(argv) {
         warning =
           "No recipients could be added. Please add recipients manually in Mail.app before sending.";
         message =
-          "Draft replaced successfully, but recipients could not be added";
+          "OutgoingMessage replaced successfully, but recipients could not be added";
       } else {
         warning =
           "Some recipients could not be added (" +
@@ -292,15 +256,15 @@ function run(argv) {
           totalRequested +
           " added). Please verify recipients in Mail.app.";
         message =
-          "Draft replaced successfully, but some recipients could not be added";
+          "OutgoingMessage replaced successfully, but some recipients could not be added";
       }
     }
 
     const result = {
-      draft_id: newDraftId,
-      old_draft_id: draftId,
-      subject: newDraftSubject,
-      sender: newDraftSender,
+      outgoing_id: newOutgoingId,
+      old_outgoing_id: outgoingId,
+      subject: newSubjectResult,
+      sender: newSenderResult,
       to_recipients: toAddrs,
       cc_recipients: ccAddrs,
       bcc_recipients: bccAddrs,
@@ -319,7 +283,7 @@ function run(argv) {
   } catch (e) {
     return JSON.stringify({
       success: false,
-      error: "Failed to replace draft: " + e.toString(),
+      error: "Failed to replace outgoing message: " + e.toString(),
     });
   }
 }

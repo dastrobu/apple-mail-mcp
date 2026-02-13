@@ -11,4 +11,8 @@ func RegisterAll(srv *mcp.Server) {
 	RegisterReplyToMessage(srv)
 	RegisterCreateDraft(srv)
 	RegisterReplaceDraft(srv)
+	RegisterListDrafts(srv)
+	RegisterCreateOutgoingMessage(srv)
+	RegisterListOutgoingMessages(srv)
+	RegisterReplaceOutgoingMessage(srv)
 }

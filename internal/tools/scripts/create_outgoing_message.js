@@ -87,7 +87,6 @@ function run(argv) {
     });
 
     // Add To recipients
-    // Use Mail.ToRecipient() constructor and push() - Mail.make() doesn't work
     for (let i = 0; i < toRecipients.length; i++) {
       if (toRecipients[i]) {
         try {
@@ -130,50 +129,13 @@ function run(argv) {
       at: msg.content,
     });
 
-    // Save the draft (required for visible: false messages)
+    // Save the message
     msg.save();
 
-    // Wait for draft to be saved to Drafts mailbox
-    // Increased delay for Exchange accounts and slower systems
-    delay(4);
-
-    // Get the OutgoingMessage details
-    const draftSubject = msg.subject();
-    const draftSender = msg.sender();
-
-    // Find the actual draft in Drafts mailbox by subject
-    // Note: OutgoingMessage.id() is different from the Message.id() in Drafts
-    const draftsMailbox = Mail.draftsMailbox();
-
-    // Use whose() for fast constant-time lookup by subject
-    const matchingDrafts = draftsMailbox.messages.whose({
-      subject: draftSubject,
-    })();
-
-    let draftId = null;
-    if (matchingDrafts.length > 0) {
-      // Get the most recent match by finding the one with the latest dateReceived
-      let mostRecent = matchingDrafts[0];
-      let mostRecentDate = mostRecent.dateReceived();
-
-      for (let i = 1; i < matchingDrafts.length; i++) {
-        const currentDate = matchingDrafts[i].dateReceived();
-        if (currentDate > mostRecentDate) {
-          mostRecent = matchingDrafts[i];
-          mostRecentDate = currentDate;
-        }
-      }
-
-      draftId = mostRecent.id();
-    }
-
-    if (!draftId) {
-      return JSON.stringify({
-        success: false,
-        error:
-          "Draft was created but could not be found in Drafts mailbox. Please check Mail.app manually.",
-      });
-    }
+    // Get the OutgoingMessage ID directly (no delay needed)
+    const outgoingId = msg.id();
+    const outgoingSubject = msg.subject();
+    const outgoingSender = msg.sender();
 
     // Read back recipients
     const toAddrs = [];
@@ -207,7 +169,7 @@ function run(argv) {
     }
 
     // Check if all recipients were added successfully
-    let message = "Draft created successfully";
+    let message = "Outgoing message created successfully";
     let warning = null;
     const requestedToCount = toRecipients.length;
     const requestedCcCount = ccRecipients.length;
@@ -221,7 +183,7 @@ function run(argv) {
         warning =
           "No recipients could be added. Please add recipients manually in Mail.app before sending.";
         message =
-          "Draft created successfully, but recipients could not be added";
+          "Outgoing message created successfully, but recipients could not be added";
       } else {
         warning =
           "Some recipients could not be added (" +
@@ -230,14 +192,14 @@ function run(argv) {
           totalRequested +
           " added). Please verify recipients in Mail.app.";
         message =
-          "Draft created successfully, but some recipients could not be added";
+          "Outgoing message created successfully, but some recipients could not be added";
       }
     }
 
     const result = {
-      draft_id: draftId,
-      subject: draftSubject,
-      sender: draftSender,
+      outgoing_id: outgoingId,
+      subject: outgoingSubject,
+      sender: outgoingSender,
       to_recipients: toAddrs,
       cc_recipients: ccAddrs,
       bcc_recipients: bccAddrs,
@@ -256,7 +218,7 @@ function run(argv) {
   } catch (e) {
     return JSON.stringify({
       success: false,
-      error: "Failed to create draft: " + e.toString(),
+      error: "Failed to create outgoing message: " + e.toString(),
     });
   }
 }

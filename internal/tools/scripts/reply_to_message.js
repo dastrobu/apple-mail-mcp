@@ -2,9 +2,17 @@ function run(argv) {
   const Mail = Application("Mail");
   Mail.includeStandardAdditions = true;
 
-  // Parse arguments: accountName, mailboxName, messageId, replyContent, openingWindow, replyToAll
+  // Collect logs instead of using console.log
+  const logs = [];
+
+  // Helper function to log messages
+  function log(message) {
+    logs.push(message);
+  }
+
+  // Parse arguments: accountName, mailboxPathStr (JSON), messageId, replyContent, openingWindow, replyToAll
   const accountName = argv[0] || "";
-  const mailboxName = argv[1] || "";
+  const mailboxPathStr = argv[1] || "";
   const messageId = argv[2] ? parseInt(argv[2]) : 0;
   const replyContent = argv[3] || "";
   const openingWindow = argv[4] === "true";
@@ -17,18 +25,43 @@ function run(argv) {
     });
   }
 
-  if (!mailboxName) {
+  if (!mailboxPathStr) {
     return JSON.stringify({
       success: false,
-      error: "Mailbox name is required",
+      error: "Mailbox path is required",
+    });
+  }
+
+  // Parse mailboxPath from JSON
+  let mailboxPath;
+  try {
+    mailboxPath = JSON.parse(mailboxPathStr);
+    if (!Array.isArray(mailboxPath)) {
+      return JSON.stringify({
+        success: false,
+        error: "Mailbox path must be a JSON array",
+      });
+    }
+  } catch (e) {
+    return JSON.stringify({
+      success: false,
+      error: "Invalid mailbox path JSON: " + e.toString(),
+    });
+  }
+
+  if (mailboxPath.length === 0) {
+    return JSON.stringify({
+      success: false,
+      error: "Mailbox path array cannot be empty",
     });
   }
 
   // Prevent replying to drafts - this crashes Mail.app
+  const firstMailboxName = mailboxPath[0].toLowerCase();
   if (
-    mailboxName.toLowerCase() === "drafts" ||
-    mailboxName.toLowerCase() === "entwürfe" ||
-    mailboxName.toLowerCase() === "brouillons"
+    firstMailboxName === "drafts" ||
+    firstMailboxName === "entwürfe" ||
+    firstMailboxName === "brouillons"
   ) {
     return JSON.stringify({
       success: false,
@@ -52,27 +85,22 @@ function run(argv) {
   }
 
   try {
-    // Find specific account and mailbox
-    let targetAccount = null;
-    let targetMailbox = null;
-    const accounts = Mail.accounts();
-
-    for (let i = 0; i < accounts.length; i++) {
-      const account = accounts[i];
-      if (account.name() === accountName) {
-        targetAccount = account;
-        const mailboxes = account.mailboxes();
-        for (let j = 0; j < mailboxes.length; j++) {
-          if (mailboxes[j].name() === mailboxName) {
-            targetMailbox = mailboxes[j];
-            break;
-          }
-        }
-        break;
-      }
+    // Use name lookup syntax to find account directly
+    let targetAccount;
+    try {
+      targetAccount = Mail.accounts[accountName];
+    } catch (e) {
+      return JSON.stringify({
+        success: false,
+        error:
+          'Account "' + accountName + '" not found. Error: ' + e.toString(),
+      });
     }
 
-    if (!targetAccount) {
+    // Verify account exists by trying to access a property
+    try {
+      targetAccount.name();
+    } catch (e) {
       return JSON.stringify({
         success: false,
         error:
@@ -82,58 +110,59 @@ function run(argv) {
       });
     }
 
-    if (!targetMailbox) {
+    // Navigate to the target mailbox using mailboxPath
+    let targetMailbox;
+    try {
+      targetMailbox = targetAccount.mailboxes[mailboxPath[0]];
+
+      // Chain through nested mailboxes
+      for (let i = 1; i < mailboxPath.length; i++) {
+        targetMailbox = targetMailbox.mailboxes[mailboxPath[i]];
+      }
+    } catch (e) {
       return JSON.stringify({
         success: false,
         error:
           'Mailbox "' +
-          mailboxName +
+          mailboxPath.join(" > ") +
           '" not found in account "' +
           accountName +
-          '". Please verify the mailbox name is correct.',
+          '". Error: ' +
+          e.toString(),
       });
     }
 
-    // Find the message by ID
-    // Note: For large mailboxes, this can be slow
-    // We limit the search to 1000 messages to prevent hanging
-    let targetMessage = null;
-    const messages = targetMailbox.messages();
-    const maxIterations = Math.min(messages.length, 1000);
-
-    for (let i = 0; i < maxIterations; i++) {
-      if (messages[i].id() === messageId) {
-        targetMessage = messages[i];
-        break;
-      }
-    }
-
-    // If not found in first 1000 messages, return error
-    if (!targetMessage && messages.length > maxIterations) {
+    // Verify mailbox exists by trying to access a property
+    try {
+      targetMailbox.name();
+    } catch (e) {
       return JSON.stringify({
         success: false,
         error:
-          "Message with ID " +
-          messageId +
-          " not found in the first " +
-          maxIterations +
-          ' messages of mailbox "' +
-          mailboxName +
-          '". The message may be in an older part of the mailbox. Please try searching for a more recent message or use a smaller mailbox.',
+          'Mailbox "' +
+          mailboxPath.join(" > ") +
+          '" not found in account "' +
+          accountName +
+          '". Please verify the mailbox path is correct.',
       });
     }
 
-    if (!targetMessage) {
+    // Use whose() for fast constant-time message lookup
+    const matches = targetMailbox.messages.whose({ id: messageId })();
+
+    if (matches.length === 0) {
       return JSON.stringify({
         success: false,
         error:
           "Message with ID " +
           messageId +
           ' not found in mailbox "' +
-          mailboxName +
+          mailboxPath.join(" > ") +
           '". The message may have been deleted or moved.',
       });
     }
+
+    const targetMessage = matches[0];
 
     // Use Mail.app's built-in reply method to create the reply.
     // This properly sets up threading, headers (In-Reply-To, References),
@@ -175,8 +204,10 @@ function run(argv) {
       at: replyMessage.content,
     });
 
-    // The reply is automatically saved as a draft by Mail.app
-    // Get the draft message details
+    // Save the reply message (required for non-visible messages)
+    replyMessage.save();
+
+    // Get the OutgoingMessage ID directly (no Drafts lookup needed)
     const draftId = replyMessage.id();
     const subject = replyMessage.subject();
 
@@ -188,7 +219,7 @@ function run(argv) {
         toRecipients.push(recipients[i].address());
       }
     } catch (e) {
-      // If we can't get recipients, continue
+      log("Error reading To recipients: " + e.toString());
     }
 
     const result = {
@@ -201,6 +232,7 @@ function run(argv) {
     return JSON.stringify({
       success: true,
       data: result,
+      logs: logs.join("\n"),
     });
   } catch (e) {
     return JSON.stringify({

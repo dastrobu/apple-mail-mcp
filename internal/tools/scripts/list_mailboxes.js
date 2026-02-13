@@ -1,58 +1,198 @@
+#!/usr/bin/osascript -l JavaScript
+
+/**
+ * Lists mailboxes for a specific account with optional sub-mailbox filtering
+ *
+ * Arguments:
+ *   argv[0] - accountName (required)
+ *   argv[1] - mailboxPath (optional) - JSON array like [] for top-level or ["Inbox"] for sub-mailboxes
+ *
+ * Features:
+ *   - Lists top-level mailboxes by default
+ *   - Lists sub-mailboxes when mailboxPath is provided
+ *   - Returns mailboxPath for each mailbox (supports nested navigation)
+ *   - Returns unreadCount for each mailbox
+ *   - Detects and reports which mailboxes have sub-mailboxes
+ */
+
 function run(argv) {
-    try {
-        // Initialize Mail.app
-        const Mail = Application('Mail');
-        Mail.includeStandardAdditions = true;
-        
-        // Parse arguments: accountName
-        const accountFilter = argv[0] || '';
-        
-        if (!accountFilter) {
-            return JSON.stringify({
-                success: false,
-                error: 'Account name is required'
-            });
-        }
-        
-        // Get all accounts
-        const accounts = Mail.accounts();
-        const mailboxes = [];
-        
-        // Iterate through accounts and their mailboxes
-        for (let i = 0; i < accounts.length; i++) {
-            const account = accounts[i];
-            const accountName = account.name();
-            
-            // Apply account filter if provided
-            if (accountFilter && accountName !== accountFilter) {
-                continue;
-            }
-            
-            const accountMailboxes = account.mailboxes();
-            
-            // Add each mailbox with account info
-            for (let j = 0; j < accountMailboxes.length; j++) {
-                const mailbox = accountMailboxes[j];
-                mailboxes.push({
-                    name: mailbox.name(),
-                    account: accountName,
-                    unreadCount: mailbox.unreadCount()
-                });
-            }
-        }
-        
-        // Return success with mailbox data
-        return JSON.stringify({
-            success: true,
-            data: {
-                mailboxes: mailboxes,
-                count: mailboxes.length
-            }
-        });
-    } catch (e) {
-        return JSON.stringify({
-            success: false,
-            error: e.toString()
-        });
+  const Mail = Application("Mail");
+  Mail.includeStandardAdditions = true;
+
+  // Collect logs instead of using console.log
+  const logs = [];
+
+  // Helper function to log messages
+  function log(message) {
+    logs.push(message);
+  }
+
+  // Parse arguments: accountName, mailboxPath (JSON array, optional)
+  const accountName = argv[0] || "";
+  // Handle empty string or missing parameter - treat as empty array
+  const mailboxPathStr = (argv[1] && argv[1].trim()) || "[]";
+
+  // Validate account name
+  if (!accountName) {
+    return JSON.stringify({
+      success: false,
+      error: "Account name is required",
+    });
+  }
+
+  // Parse mailboxPath from JSON
+  let mailboxPath;
+  try {
+    mailboxPath = JSON.parse(mailboxPathStr);
+    if (!Array.isArray(mailboxPath)) {
+      return JSON.stringify({
+        success: false,
+        error: "Mailbox path must be a JSON array",
+      });
     }
+  } catch (e) {
+    return JSON.stringify({
+      success: false,
+      error: "Invalid mailbox path JSON: " + e.toString(),
+    });
+  }
+
+  try {
+    // Use name lookup syntax to find account directly
+    let targetAccount;
+    try {
+      targetAccount = Mail.accounts[accountName];
+    } catch (e) {
+      return JSON.stringify({
+        success: false,
+        error:
+          'Account "' + accountName + '" not found. Error: ' + e.toString(),
+      });
+    }
+
+    // Verify account exists by trying to access a property
+    try {
+      targetAccount.name();
+    } catch (e) {
+      return JSON.stringify({
+        success: false,
+        error:
+          'Account "' +
+          accountName +
+          '" not found. Please verify the account name is correct.',
+      });
+    }
+
+    // Navigate to the parent mailbox if mailboxPath is provided
+    let parentMailbox = null;
+    if (mailboxPath.length > 0) {
+      try {
+        parentMailbox = targetAccount.mailboxes[mailboxPath[0]];
+
+        // Chain through nested mailboxes
+        for (let i = 1; i < mailboxPath.length; i++) {
+          parentMailbox = parentMailbox.mailboxes[mailboxPath[i]];
+        }
+      } catch (e) {
+        return JSON.stringify({
+          success: false,
+          error:
+            'Mailbox path "' +
+            mailboxPath.join(" > ") +
+            '" not found in account "' +
+            accountName +
+            '". Error: ' +
+            e.toString(),
+        });
+      }
+
+      // Verify mailbox exists by trying to access a property
+      try {
+        parentMailbox.name();
+      } catch (e) {
+        return JSON.stringify({
+          success: false,
+          error:
+            'Mailbox path "' +
+            mailboxPath.join(" > ") +
+            '" not found in account "' +
+            accountName +
+            '". Please verify the mailbox path is correct.',
+        });
+      }
+    }
+
+    // Get mailboxes to list (either from account or parent mailbox)
+    const mailboxes = [];
+    let sourceMailboxes;
+
+    if (parentMailbox) {
+      // List sub-mailboxes of the specified parent
+      sourceMailboxes = parentMailbox.mailboxes();
+    } else {
+      // List top-level mailboxes of the account
+      sourceMailboxes = targetAccount.mailboxes();
+    }
+
+    // Process each mailbox
+    for (let i = 0; i < sourceMailboxes.length; i++) {
+      const mailbox = sourceMailboxes[i];
+
+      // Build the full mailbox path for this mailbox
+      const currentMailboxPath = [...mailboxPath, mailbox.name()];
+
+      // Check if this mailbox has sub-mailboxes
+      let hasSubMailboxes = false;
+      let subMailboxCount = 0;
+      try {
+        const subMailboxes = mailbox.mailboxes();
+        subMailboxCount = subMailboxes.length;
+        hasSubMailboxes = subMailboxCount > 0;
+      } catch (e) {
+        log("Error reading sub-mailboxes: " + e.toString());
+      }
+
+      // Get unread count
+      let unreadCount = 0;
+      try {
+        unreadCount = mailbox.unreadCount();
+      } catch (e) {
+        log("Error reading unread count: " + e.toString());
+      }
+
+      // Get total message count
+      let messageCount = 0;
+      try {
+        messageCount = mailbox.messages.length;
+      } catch (e) {
+        log("Error reading message count: " + e.toString());
+      }
+
+      mailboxes.push({
+        name: mailbox.name(),
+        mailboxPath: currentMailboxPath,
+        account: accountName,
+        unreadCount: unreadCount,
+        messageCount: messageCount,
+        hasSubMailboxes: hasSubMailboxes,
+        subMailboxCount: subMailboxCount,
+      });
+    }
+
+    // Return success with mailbox data
+    return JSON.stringify({
+      success: true,
+      data: {
+        mailboxes: mailboxes,
+        count: mailboxes.length,
+        parentMailboxPath: mailboxPath.length > 0 ? mailboxPath : null,
+      },
+      logs: logs.join("\n"),
+    });
+  } catch (e) {
+    return JSON.stringify({
+      success: false,
+      error: "Failed to list mailboxes: " + e.toString(),
+    });
+  }
 }

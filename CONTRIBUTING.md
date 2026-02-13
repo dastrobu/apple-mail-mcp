@@ -159,6 +159,44 @@ This runs:
 - Initialize Mail.app properly
 - Convert dates to ISO strings
 - Use descriptive variable names
+- **NEVER use console.log()** - use the `log()` helper function instead
+- Always include `logs: logs` in the data object
+
+**Logging Pattern:**
+```javascript
+function run(argv) {
+    const Mail = Application('Mail');
+    Mail.includeStandardAdditions = true;
+    
+    // Collect logs instead of using console.log
+    const logs = [];
+    
+    // Helper function to log messages
+    function log(message) {
+        logs.push(message);
+    }
+    
+    // ... rest of script
+    
+    try {
+        // Use log() for any diagnostic messages
+        log("Processing started");
+        
+        // ... operations
+        
+        return JSON.stringify({
+            success: true,
+            data: result,
+            logs: logs.join("\n")  // Always include logs at top level
+        });
+    } catch (e) {
+        return JSON.stringify({
+            success: false,
+            error: e.toString()
+        });
+    }
+}
+```
 
 ### Tool Implementation
 
@@ -193,6 +231,14 @@ func handleTool(ctx context.Context, request *mcp.CallToolRequest, input ToolInp
 function run(argv) {
     const Mail = Application('Mail');
     Mail.includeStandardAdditions = true;
+    
+    // Collect logs instead of using console.log
+    const logs = [];
+    
+    // Helper function to log messages
+    function log(message) {
+        logs.push(message);
+    }
     
     // 1. Parse arguments with safe fallbacks
     const accountName = argv[0] || '';
@@ -231,9 +277,14 @@ function run(argv) {
     // 3. Only proceed to try-catch after validation passes
     try {
         // ... implementation
+        
+        // Use log() for diagnostic messages
+        log("Operation completed successfully");
+        
         return JSON.stringify({
             success: true,
-            data: { ... }  // Always wrap in data field
+            data: result,
+            logs: logs.join("\n")  // Always include logs at top level
         });
     } catch (e) {
         return JSON.stringify({
@@ -250,6 +301,8 @@ function run(argv) {
 - No default values in argument parsing - make parameters required
 - Keep validation in JXA layer, not Go layer
 - Return errors immediately, don't defer to try-catch
+- Use `log()` helper instead of `console.log()` for all diagnostic output
+- Always include `logs: logs.join("\n")` as a top-level property (alongside `success` and `data`)
 
 ## Adding New Tools
 

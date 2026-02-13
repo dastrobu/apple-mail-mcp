@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+
+	"github.com/dastrobu/apple-mail-mcp/internal/log"
 )
 
 // Result represents the result of a JXA script execution
@@ -52,6 +54,12 @@ func Execute(ctx context.Context, script string, args ...string) (any, error) {
 		if errVal, ok := result["error"].(string); ok && errVal != "" {
 			errMsg = errVal
 		}
+
+		// Include logs if available for better debugging
+		if logs, ok := result["logs"].(string); ok && logs != "" {
+			return nil, fmt.Errorf("JXA script error: %s\nLogs:\n%s\nArguments: %v", errMsg, logs, args)
+		}
+
 		return nil, fmt.Errorf("JXA script error: %s\nArguments: %v", errMsg, args)
 	}
 
@@ -59,6 +67,12 @@ func Execute(ctx context.Context, script string, args ...string) (any, error) {
 	data, ok := result["data"]
 	if !ok {
 		return nil, fmt.Errorf("script output missing 'data' field\nOutput: %s\nArguments: %v", string(output), args)
+	}
+
+	// Log JXA script logs using logger from context
+	logger := log.FromContext(ctx)
+	if logs, ok := result["logs"].(string); ok && logs != "" {
+		logger.Printf("[DEBUG] JXA Script Logs:\n%s\n", logs)
 	}
 
 	return data, nil

@@ -20,6 +20,7 @@ An MCP (Model Context Protocol) server providing programmatic access to macOS Ma
 2. **STDIO Only**: Server uses STDIO transport exclusively (no HTTP/SSE)
 3. **Modular Design**: Each tool is in its own file within `internal/tools/` for maintainability
 4. **macOS Only**: Relies on Mail.app and JXA, which are macOS-specific
+5. **Nested Mailbox Support**: All tools support hierarchical mailboxes via mailbox path arrays
 
 ## Go Development Guidelines
 
@@ -189,6 +190,14 @@ function run(argv) {
     const Mail = Application('Mail');
     Mail.includeStandardAdditions = true;
     
+    // Collect logs instead of using console.log
+    const logs = [];
+    
+    // Helper function to log messages
+    function log(message) {
+        logs.push(message);
+    }
+    
     // Parse arguments - extract without defaults
     const param1 = argv[0] || '';
     const param2 = argv[1] || '';
@@ -220,10 +229,11 @@ function run(argv) {
         // Perform operations
         const result = doSomething(param1, param2, param3);
         
-        // Return success with data wrapped in 'data' field
+        // Return success with data wrapped in 'data' field and logs at top level
         return JSON.stringify({
             success: true,
-            data: result
+            data: result,
+            logs: logs.join("\n")
         });
     } catch (e) {
         return JSON.stringify({
@@ -357,12 +367,76 @@ const limit = parseInt(argv[1]) || 50;     // No! Validate instead
 - Clear error messages come from the validation layer
 - No redundant validation between layers
 
-#### Error Handling
+#### Error Handling and Logging
 
 - Validate all arguments before try-catch
 - Always wrap operations in try-catch
 - Return structured JSON: `{success: bool, data/error: ...}`
 - Include descriptive error messages
+- **NEVER use console.log()** - use the log() helper function instead
+- **NEVER ignore errors silently** - always log errors using the log() helper:
+  ```javascript
+  // ❌ WRONG - Silent error
+  try {
+    const value = obj.property();
+  } catch (e) {
+    // No recipients
+  }
+  
+  // ❌ WRONG - Using console.log
+  try {
+    const value = obj.property();
+  } catch (e) {
+    console.log("Error reading property: " + e.toString());
+  }
+  
+  // ✅ CORRECT - Use log() helper
+  try {
+    const value = obj.property();
+  } catch (e) {
+    log("Error reading property: " + e.toString());
+  }
+  ```
+
+**Logging Pattern:**
+All JXA scripts MUST use the following logging pattern:
+```javascript
+function run(argv) {
+    const Mail = Application('Mail');
+    Mail.includeStandardAdditions = true;
+    
+    // Collect logs instead of using console.log
+    const logs = [];
+    
+    // Helper function to log messages
+    function log(message) {
+        logs.push(message);
+    }
+    
+    // ... rest of script
+    
+    try {
+        // ... operations
+        return JSON.stringify({
+            success: true,
+            data: result,
+            logs: logs.join("\n")  // Always include logs at top level
+        });
+    } catch (e) {
+        return JSON.stringify({
+            success: false,
+            error: e.toString()
+        });
+    }
+}
+```
+
+**Key Points:**
+- Create `logs` array at top of run() function
+- Define `log(message)` helper that appends message to logs array
+- Use `log()` instead of `console.log()` throughout the script
+- Always include `logs: logs.join("\n")` as a top-level property (alongside `success` and `data`)
+- Logs are returned to Go layer as a single string with newline separators
 
 ### Error Handling Pattern
 
@@ -589,6 +663,10 @@ func myHandler(ctx context.Context, request *mcp.CallToolRequest, input MyInput)
 10. **Type assertions need checking**: `val, ok := x.(string)`
 11. **JSON numbers are float64** - convert to int as needed
 12. **Context cancellation** - always pass and respect ctx
+13. **Use mailboxPath arrays** - not plain mailbox names (supports nested mailboxes)
+14. **Dereference Object Specifiers** - always use `()` to get values: `mailbox.name()` not `mailbox.name`
+15. **Use whose() for filtering** - ~150x faster than loops, constant-time performance
+16. **NEVER use console.log()** - use the `log()` helper function and include `logs` as top-level property
 
 ## Adding New Tools
 
@@ -615,6 +693,162 @@ Each tool should be self-contained in its own file within `internal/tools/`.
 - Ensure tests pass before pushing
 - Avoid interactive Git operations in automation
 
+## Nested Mailbox Support
+
+All tools must support hierarchical mailboxes (e.g., `Inbox > GitHub`).
+
+### Mailbox Path Representation
+
+Use JSON arrays for mailbox paths:
+- Top-level: `["Inbox"]`
+- Nested: `["Inbox", "GitHub"]`
+- Deeply nested: `["Archive", "2024", "Q1"]`
+
+### Building Mailbox Paths (JXA)
+
+```javascript
+function getMailboxPath(mailbox, accountName) {
+  const path = [];
+  let current = mailbox;
+
+  while (current) {
+    const name = current.name();
+    if (name === accountName) break;
+    path.unshift(name);
+    try {
+      current = current.container();
+    } catch (e) {
+      break;
+    }
+  }
+  return path;
+}
+```
+
+### Navigating to Nested Mailboxes (JXA)
+
+```javascript
+// Parse mailboxPath from JSON
+const mailboxPath = JSON.parse(mailboxPathStr);
+
+// Navigate using chained lookups
+let targetMailbox = account.mailboxes[mailboxPath[0]];
+for (let i = 1; i < mailboxPath.length; i++) {
+  targetMailbox = targetMailbox.mailboxes[mailboxPath[i]];
+}
+```
+
+### Go Integration
+
+**Input Type:**
+```go
+type ToolInput struct {
+    Account     string   `json:"account" jsonschema:"Account name"`
+    MailboxPath []string `json:"mailboxPath" jsonschema:"Mailbox path array"`
+    ID          int      `json:"id" jsonschema:"Message ID"`
+}
+```
+
+**Execution:**
+```go
+mailboxPathJSON, err := json.Marshal(input.MailboxPath)
+if err != nil {
+    return nil, nil, fmt.Errorf("failed to marshal mailbox path: %w", err)
+}
+
+data, err := jxa.Execute(ctx, script,
+    input.Account,
+    string(mailboxPathJSON),
+    fmt.Sprintf("%d", input.ID))
+```
+
+## JXA Best Practices
+
+Based on [JXA documentation](https://github.com/JXA-Cookbook/JXA-Cookbook) and extensive testing:
+
+### Object Specifier Dereferencing
+
+**Always** call properties as functions to get values:
+
+```javascript
+// ❌ Wrong - returns Object Specifier
+const name = mailbox.name;
+
+// ✅ Correct - returns JavaScript string
+const name = mailbox.name();
+```
+
+**Exception:** `.length` works on both Object Specifiers and arrays.
+
+### Name Lookup Syntax
+
+```javascript
+// ✅ Direct name lookup (preferred)
+const inbox = account.mailboxes["Inbox"];
+const github = inbox.mailboxes["GitHub"];
+
+// ❌ Don't loop for name-based lookup
+for (let i = 0; i < mailboxes.length; i++) {
+  if (mailboxes[i].name() === "Inbox") { /* inefficient */ }
+}
+```
+
+### Use whose() for Filtering
+
+**Performance:** ~150x faster than loops, constant-time O(1)
+
+```javascript
+// ✅ Fast (constant time ~0.3ms)
+const matches = mailbox.messages.whose({ id: messageId })();
+
+// ❌ Slow (linear time)
+const messages = mailbox.messages();
+for (let i = 0; i < messages.length; i++) {
+  if (messages[i].id() === messageId) { /* 150x slower */ }
+}
+```
+
+### whose() Performance Numbers
+
+- `whose()`: 0.00064 ms/record (constant time)
+- JavaScript filter: 0.1 ms/record (150x slower)
+- Traditional loop: 2 ms/record (3000x slower)
+
+For 500 records: `whose()` = 0.32ms vs loops = 1000ms
+
+### Convert Elements to Arrays
+
+```javascript
+// ❌ This fails - not an array
+const acc = app.accounts;
+acc.forEach(a => console.log(a.name()));
+
+// ✅ Dereference first
+const acc = app.accounts();
+acc.forEach(a => console.log(a.name()));
+```
+
+### Modern JavaScript
+
+```javascript
+// ✅ Use const/let, template literals, arrow functions
+const Mail = Application("Mail");
+const error = `Message ${id} not found in ${mailbox}`;
+messages.forEach(msg => console.log(msg.subject()));
+```
+
+### Enumeration Property Filtering
+
+```javascript
+// ❌ Fails with "Types cannot be converted"
+app.accounts.whose({ authentication: "password" })();
+
+// ✅ Use _match with ObjectSpecifier()
+app.accounts.whose({
+  _match: [ObjectSpecifier().authentication, "password"]
+})();
+```
+
 ## Questions?
 
 When implementing features:
@@ -623,3 +857,5 @@ When implementing features:
 3. Follow Go best practices
 4. Keep it simple and maintainable
 5. Test with Mail.app running
+6. See `docs/MAIL_EDITING.md` for detailed JXA patterns
+7. See `internal/tools/scripts/NESTED_MAILBOX_SUPPORT.md` for mailbox handling

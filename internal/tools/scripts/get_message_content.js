@@ -1,14 +1,39 @@
 #!/usr/bin/osascript -l JavaScript
 
+/**
+ * Get message content from Mail.app with nested mailbox support
+ *
+ * Arguments:
+ *   argv[0] - accountName (required)
+ *   argv[1] - mailboxPath (required) - JSON array like ["Inbox"] or ["Inbox","GitHub"]
+ *   argv[2] - messageId (required) - numeric ID
+ *
+ * Improvements:
+ *   - Supports nested mailboxes via mailboxPath array
+ *   - Uses chained name lookup for navigation
+ *   - Uses whose() for fast message ID filtering (constant time)
+ *   - Proper Object Specifier dereferencing with ()
+ *   - Better error handling with descriptive messages
+ */
+
 function run(argv) {
   const Mail = Application("Mail");
   Mail.includeStandardAdditions = true;
 
-  // Parse arguments: accountName, mailboxName, messageId
+  // Collect logs instead of using console.log
+  const logs = [];
+
+  // Helper function to log messages
+  function log(message) {
+    logs.push(message);
+  }
+
+  // Parse arguments: accountName, mailboxPath (JSON array), messageId
   const accountName = argv[0] || "";
-  const mailboxName = argv[1] || "";
+  const mailboxPathStr = argv[1] || "";
   const messageId = argv[2] ? parseInt(argv[2]) : 0;
 
+  // Validate all required arguments explicitly
   if (!accountName) {
     return JSON.stringify({
       success: false,
@@ -16,10 +41,10 @@ function run(argv) {
     });
   }
 
-  if (!mailboxName) {
+  if (!mailboxPathStr) {
     return JSON.stringify({
       success: false,
-      error: "Mailbox name is required",
+      error: "Mailbox path is required",
     });
   }
 
@@ -30,60 +55,89 @@ function run(argv) {
     });
   }
 
+  // Parse mailboxPath from JSON
+  let mailboxPath;
   try {
-    // Find specific account and mailbox
-    let targetMailbox = null;
-    const accounts = Mail.accounts();
+    mailboxPath = JSON.parse(mailboxPathStr);
+    if (!Array.isArray(mailboxPath) || mailboxPath.length === 0) {
+      return JSON.stringify({
+        success: false,
+        error: "Mailbox path must be a non-empty JSON array",
+      });
+    }
+  } catch (e) {
+    return JSON.stringify({
+      success: false,
+      error: `Invalid mailbox path JSON: ${e.toString()}`,
+    });
+  }
 
-    for (let i = 0; i < accounts.length; i++) {
-      const account = accounts[i];
-      if (account.name() === accountName) {
-        const mailboxes = account.mailboxes();
-        for (let j = 0; j < mailboxes.length; j++) {
-          if (mailboxes[j].name() === mailboxName) {
-            targetMailbox = mailboxes[j];
-            break;
-          }
-        }
-        break;
+  try {
+    // Use name lookup syntax to find account directly
+    let targetAccount;
+    try {
+      targetAccount = Mail.accounts[accountName];
+    } catch (e) {
+      return JSON.stringify({
+        success: false,
+        error: `Account "${accountName}" not found. Error: ${e.toString()}`,
+      });
+    }
+
+    // Verify account exists by trying to access a property
+    try {
+      targetAccount.name();
+    } catch (e) {
+      return JSON.stringify({
+        success: false,
+        error: `Account "${accountName}" not found. Please verify the account name is correct.`,
+      });
+    }
+
+    // Navigate to the target mailbox using chained name lookup
+    // For nested mailboxes like ["Inbox", "GitHub"], this chains:
+    //   account.mailboxes["Inbox"].mailboxes["GitHub"]
+    let targetMailbox;
+    try {
+      targetMailbox = targetAccount.mailboxes[mailboxPath[0]];
+
+      // Chain through nested mailboxes
+      for (let i = 1; i < mailboxPath.length; i++) {
+        targetMailbox = targetMailbox.mailboxes[mailboxPath[i]];
       }
-    }
-
-    if (!targetMailbox) {
+    } catch (e) {
       return JSON.stringify({
         success: false,
-        error: `Mailbox "${mailboxName}" not found in account "${accountName}". Please verify the account and mailbox names are correct.`,
+        error: `Mailbox path "${mailboxPath.join(" > ")}" not found in account "${accountName}". Error: ${e.toString()}`,
       });
     }
 
-    // Find the message by ID
-    // Note: For large mailboxes, this can be slow
-    // We limit the search to 1000 messages to prevent hanging
-    let targetMessage = null;
-    const messages = targetMailbox.messages();
-    const maxIterations = Math.min(messages.length, 1000);
-
-    for (let i = 0; i < maxIterations; i++) {
-      if (messages[i].id() === messageId) {
-        targetMessage = messages[i];
-        break;
-      }
-    }
-
-    // If not found in first 1000 messages, return error
-    if (!targetMessage && messages.length > maxIterations) {
+    // Verify mailbox exists by trying to access a property
+    try {
+      targetMailbox.name();
+    } catch (e) {
       return JSON.stringify({
         success: false,
-        error: `Message with ID ${messageId} not found in the first ${maxIterations} messages of mailbox "${mailboxName}". The message may be in an older part of the mailbox. Please try searching for a more recent message or use a smaller mailbox.`,
+        error: `Mailbox path "${mailboxPath.join(" > ")}" not found in account "${accountName}". Please verify the mailbox path is correct.`,
       });
     }
 
-    if (!targetMessage) {
+    // Use whose() to filter for the specific message ID
+    // This is MUCH faster than looping (constant time vs linear time)
+    // whose() returns a list of Object Specifiers, so we need to dereference with ()
+    const matchingMessages = targetMailbox.messages.whose({
+      id: messageId,
+    })();
+
+    if (!matchingMessages || matchingMessages.length === 0) {
       return JSON.stringify({
         success: false,
-        error: `Message with ID ${messageId} not found in mailbox "${mailboxName}". The message may have been deleted or moved.`,
+        error: `Message with ID ${messageId} not found in mailbox "${mailboxPath.join(" > ")}". The message may have been deleted or moved.`,
       });
     }
+
+    // Get the first (and should be only) matching message
+    const targetMessage = matchingMessages[0];
 
     // Get message details with error handling for each field
     const result = {};
@@ -171,11 +225,11 @@ function run(argv) {
             address: toRecipients[i].address(),
           });
         } catch (e) {
-          // Skip recipient if error accessing properties
+          log("Error reading To recipient " + i + ": " + e.toString());
         }
       }
     } catch (e) {
-      // Leave as empty array if error getting recipients list
+      log("Error getting To recipients list: " + e.toString());
     }
 
     result.ccRecipients = [];
@@ -188,11 +242,11 @@ function run(argv) {
             address: ccRecipients[i].address(),
           });
         } catch (e) {
-          // Skip recipient if error accessing properties
+          log("Error reading CC recipient " + i + ": " + e.toString());
         }
       }
     } catch (e) {
-      // Leave as empty array if error getting recipients list
+      log("Error getting CC recipients list: " + e.toString());
     }
 
     result.bccRecipients = [];
@@ -205,11 +259,11 @@ function run(argv) {
             address: bccRecipients[i].address(),
           });
         } catch (e) {
-          // Skip recipient if error accessing properties
+          log("Error reading BCC recipient " + i + ": " + e.toString());
         }
       }
     } catch (e) {
-      // Leave as empty array if error getting recipients list
+      log("Error getting BCC recipients list: " + e.toString());
     }
 
     // Get attachments with error handling
@@ -242,7 +296,7 @@ function run(argv) {
         result.attachments.push(attInfo);
       }
     } catch (e) {
-      // Leave as empty array if error getting attachments list
+      log("Error getting attachments list: " + e.toString());
     }
 
     return JSON.stringify({
@@ -250,6 +304,7 @@ function run(argv) {
       data: {
         message: result,
       },
+      logs: logs.join("\n"),
     });
   } catch (e) {
     return JSON.stringify({

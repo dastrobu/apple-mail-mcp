@@ -17,6 +17,8 @@ experiments.
 - [Approaches Tested](#approaches-tested)
 - [The Working Approach](#the-working-approach)
 - [Modifying Existing Drafts](#modifying-existing-drafts)
+- [Nested Mailbox Support](#nested-mailbox-support)
+- [JXA Best Practices](#jxa-best-practices)
 - [Alternatives to JXA](#alternatives-to-jxa)
 - [ObjC Bridge from JXA](#objc-bridge-from-jxa)
 - [Useful Properties & Helpers](#useful-properties--helpers)
@@ -436,6 +438,313 @@ Use the built-in `Application` property instead of searching by name:
 ```javascript
 // ✅ Works regardless of locale (Drafts, Entwürfe, Brouillons, etc.)
 const draftsMailbox = Mail.draftsMailbox();
+```
+
+## Nested Mailbox Support
+
+Mail.app supports hierarchical mailboxes (e.g., `Inbox > GitHub` or `Archive > 2024 > Q1`). Properly accessing these requires understanding JXA's mailbox navigation.
+
+### The Problem
+
+Nested mailboxes cannot be accessed with simple name lookups when using flat mailbox names. For example:
+
+```javascript
+// ❌ This fails for nested mailboxes
+const mailbox = account.mailboxes["GitHub"];
+```
+
+This only finds top-level mailboxes named "GitHub", not `Inbox > GitHub`.
+
+### The Solution: Mailbox Paths
+
+Represent mailboxes as **JSON arrays** containing the full path:
+
+```javascript
+// Top-level mailbox
+["Inbox"]
+
+// Nested mailbox  
+["Inbox", "GitHub"]
+
+// Deeply nested
+["Archive", "2024", "Q1"]
+```
+
+### Building Mailbox Paths
+
+Walk up the mailbox hierarchy until reaching the account:
+
+```javascript
+function getMailboxPath(mailbox, accountName) {
+  const path = [];
+  let current = mailbox;
+
+  while (current) {
+    const name = current.name();
+    
+    // Stop at account level
+    if (name === accountName) {
+      break;
+    }
+    
+    path.unshift(name);
+    
+    try {
+      current = current.container();
+    } catch (e) {
+      break;
+    }
+  }
+  
+  return path;
+}
+```
+
+**Key Points:**
+- Stops when `mailbox.name() === accountName`
+- Builds path from leaf to root, then reverses with `unshift()`
+- Returns `["Inbox", "GitHub"]` not including account name
+
+### Navigating to Nested Mailboxes
+
+Use chained name lookups:
+
+```javascript
+// Parse mailboxPath from JSON
+const mailboxPath = JSON.parse('["Inbox", "GitHub"]');
+
+// Start at account level
+let targetMailbox = account.mailboxes[mailboxPath[0]];
+
+// Chain through nested mailboxes
+for (let i = 1; i < mailboxPath.length; i++) {
+  targetMailbox = targetMailbox.mailboxes[mailboxPath[i]];
+}
+
+// Now targetMailbox points to Inbox > GitHub
+```
+
+**Why This Works:**
+- JXA supports name-based indexing: `account.mailboxes["Inbox"]`
+- Object Specifiers can be chained: `inbox.mailboxes["GitHub"]`
+- No loops or `whose()` needed at mailbox level
+
+### Message Lookup with whose()
+
+Once you have the target mailbox, use `whose()` for fast message lookup:
+
+```javascript
+const matchingMessages = targetMailbox.messages.whose({
+  id: messageId,
+})();
+```
+
+**Performance:**
+- `whose()` runs in constant time (~0.3ms regardless of mailbox size)
+- Searches only the specific mailbox (not recursive)
+- 150x+ faster than manual iteration
+
+### API Pattern
+
+**get_selected_messages** output:
+```json
+{
+  "mailbox": "GitHub",
+  "mailboxPath": ["Inbox", "GitHub"],
+  "account": "Exchange"
+}
+```
+
+**get_message_content** input:
+```bash
+./get_message_content.js "Exchange" '["Inbox","GitHub"]' 66823
+```
+
+The `mailboxPath` is passed as a JSON array string.
+
+## JXA Best Practices
+
+Based on extensive testing and the [JXA documentation by Christian Kirsch](https://github.com/JXA-Cookbook/JXA-Cookbook):
+
+### Object Specifier Dereferencing
+
+In JXA, property access returns an **Object Specifier** (opaque pointer), not the actual value.
+
+```javascript
+// ❌ Wrong - returns Object Specifier
+const name = mailbox.name;
+
+// ✅ Correct - returns JavaScript string
+const name = mailbox.name();
+
+// Alternative syntax (equivalent)
+const name = mailbox.name.get();
+```
+
+**Key Rule:** Always call properties as functions with `()` to get values.
+
+### The .length Exception
+
+The `.length` property works on **both** Object Specifiers and JavaScript arrays:
+
+```javascript
+// ✅ Both work
+const count1 = mailbox.messages.length;
+const count2 = mailbox.messages().length;
+```
+
+This is the **only** property that doesn't require dereferencing.
+
+### Name Lookup Syntax
+
+Access objects by name using bracket notation:
+
+```javascript
+// ✅ Direct name lookup (preferred)
+const inbox = account.mailboxes["Inbox"];
+const github = inbox.mailboxes["GitHub"];
+
+// Also works without brackets (if no spaces/special chars)
+const inbox = account.mailboxes.Inbox;
+
+// ❌ Don't use loops for name-based lookup
+const mailboxes = account.mailboxes();
+for (let i = 0; i < mailboxes.length; i++) {
+  if (mailboxes[i].name() === "Inbox") {
+    // Found it (inefficient!)
+  }
+}
+```
+
+### Filtering with whose()
+
+The `whose()` method provides SQL-like filtering with **constant-time performance**:
+
+```javascript
+// ✅ Fast filtering (constant time ~0.3ms)
+const matches = mailbox.messages.whose({
+  id: messageId,
+})();
+
+// With logical operators
+const filtered = app.reminders.whose({
+  _and: [
+    {completed: true},
+    {completionDate: {'>': yesterday}}
+  ]
+})();
+
+// ❌ Slow filtering (linear time)
+const messages = mailbox.messages();
+for (let i = 0; i < messages.length; i++) {
+  if (messages[i].id() === messageId) {
+    // Found it (150x slower!)
+  }
+}
+```
+
+**Performance:**
+- `whose()`: ~0.00064 ms per record (constant time)
+- JavaScript filter: ~0.1 ms per record (linear time)
+- Traditional loop: ~2 ms per record (linear time)
+
+**For 500 records:**
+- `whose()`: 0.32 ms
+- JavaScript filter: 50 ms (150x slower)
+- Traditional loop: 1000 ms (3000x slower)
+
+### Converting Elements to Arrays
+
+Elements (lists of objects) are **not** JavaScript arrays:
+
+```javascript
+// ❌ This fails - acc is an Object Specifier, not an array
+const acc = app.accounts;
+acc.forEach(a => console.log(a.name()));
+
+// ✅ Dereference first to get JavaScript array
+const acc = app.accounts();
+acc.forEach(a => console.log(a.name()));
+```
+
+**Exception:** The `.length` property works on both.
+
+### Enumeration Property Filtering
+
+Filtering by enumeration properties requires special syntax:
+
+```javascript
+// ❌ This fails with "Types cannot be converted"
+const pwAccounts = app.accounts.whose({
+  authentication: "password"
+})();
+
+// ✅ Use _match with ObjectSpecifier()
+const pwAccounts = app.accounts.whose({
+  _match: [ObjectSpecifier().authentication, "password"]
+})();
+```
+
+### Modern JavaScript Patterns
+
+Use modern JavaScript in JXA scripts:
+
+```javascript
+// ✅ Use const/let instead of var
+const Mail = Application("Mail");
+const messages = mailbox.messages();
+
+// ✅ Use template literals
+const error = `Message ${messageId} not found in ${mailboxName}`;
+
+// ✅ Use arrow functions
+messages.forEach(msg => console.log(msg.subject()));
+
+// ✅ Use for...of loops
+for (const msg of messages) {
+  console.log(msg.subject());
+}
+```
+
+### Error Handling
+
+```javascript
+// ✅ Validate all arguments at the start
+if (!accountName) {
+  return JSON.stringify({
+    success: false,
+    error: "Account name is required"
+  });
+}
+
+// ✅ Return structured JSON errors
+try {
+  const result = doSomething();
+  return JSON.stringify({
+    success: true,
+    data: result
+  });
+} catch (e) {
+  return JSON.stringify({
+    success: false,
+    error: e.toString()
+  });
+}
+
+// ❌ Don't use empty catch blocks
+try {
+  const count = messages.length;
+} catch (e) {} // Bad practice
+```
+
+### Date Handling
+
+```javascript
+// ✅ Use ISO format
+const dateStr = message.dateReceived().toISOString();
+
+// ❌ Avoid locale-specific formats
+const dateStr = message.dateReceived().toLocaleString(); // Inconsistent
 ```
 
 ## Alternatives to JXA

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 
 	"github.com/dastrobu/apple-mail-mcp/internal/jxa"
+	applog "github.com/dastrobu/apple-mail-mcp/internal/log"
 	"github.com/dastrobu/apple-mail-mcp/internal/opts"
 	"github.com/dastrobu/apple-mail-mcp/internal/tools"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -79,6 +81,13 @@ func createServer(options *opts.Options) *mcp.Server {
 
 func run(options *opts.Options) error {
 	ctx := context.Background()
+
+	// Always add a logger to context (real logger if debug, no-op otherwise)
+	if options.Debug {
+		ctx = applog.WithLogger(ctx, log.Default())
+	} else {
+		ctx = applog.WithLogger(ctx, log.New(io.Discard, "", 0))
+	}
 
 	// Run startup check to verify Mail.app is accessible
 	log.Println("Running Mail.app connectivity check...")
