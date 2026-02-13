@@ -940,10 +940,10 @@ The Table of Contents is auto-generated using [doctoc](https://github.com/thlore
 make doctoc
 
 # Or directly with npx
-npx doctoc --maxlevel 2 README.md --github --title "## Table of Contents"
+npx doctoc --maxlevel 3 README.md --github --title "## Table of Contents"
 ```
 
-The TOC is wrapped in special comments (`<!-- START doctoc -->` ... `<!-- END doctoc -->`) and should never be edited manually. The `--maxlevel 2` flag limits the TOC to main sections (h2 headings only) for better readability.
+The TOC is wrapped in special comments (`<!-- START doctoc -->` ... `<!-- END doctoc -->`) and should never be edited manually. The `--maxlevel 3` flag limits the TOC to main sections (h2 headings only) for better readability.
 
 **Note:** The pre-commit hook automatically runs doctoc when `README.md` is staged, so the TOC stays in sync with section changes.
 

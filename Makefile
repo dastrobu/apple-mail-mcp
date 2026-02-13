@@ -44,7 +44,7 @@ install-hooks:
 
 # Update README Table of Contents
 doctoc:
-	npx doctoc --maxlevel 2 README.md --github --title "## Table of Contents"
+	npx doctoc --maxlevel 3 README.md --github --title "## Table of Contents"
 
 # Display help
 help:
