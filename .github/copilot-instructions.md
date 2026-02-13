@@ -275,6 +275,15 @@ function run(argv) {
     const Mail = Application('Mail');
     Mail.includeStandardAdditions = true;
     
+    // Check if Mail.app is running (REQUIRED for all scripts)
+    if (!Mail.running()) {
+        return JSON.stringify({
+            success: false,
+            error: 'Mail.app is not running. Please start Mail.app and try again.',
+            errorCode: 'MAIL_APP_NOT_AVAILABLE'
+        });
+    }
+    
     // Collect logs instead of using console.log
     const logs = [];
     
@@ -452,11 +461,59 @@ const limit = parseInt(argv[1]) || 50;     // No! Validate instead
 - Clear error messages come from the validation layer
 - No redundant validation between layers
 
+#### Mail.app Availability Check
+
+**CRITICAL**: All JXA scripts MUST check if Mail.app is running before any operations:
+
+```javascript
+// Check if Mail.app is running (REQUIRED for all scripts)
+if (!Mail.running()) {
+    return JSON.stringify({
+        success: false,
+        error: 'Mail.app is not running. Please start Mail.app and try again.',
+        errorCode: 'MAIL_APP_NOT_RUNNING'
+    });
+}
+
+// All Mail.app operations should be wrapped in try-catch
+try {
+    // Access Mail.app (e.g., Mail.accounts(), Mail.mailboxes())
+    const accounts = Mail.accounts();
+    // ... do work ...
+    
+    return JSON.stringify({
+        success: true,
+        data: { /* results */ },
+        logs: logs.join("\n")
+    });
+} catch (e) {
+    // If Mail.app is running but we can't access it, it's a permissions issue
+    // (macOS returns generic "Error: An error occurred." for permission denials)
+    return JSON.stringify({
+        success: false,
+        error: 'Permission denied to access Mail.app. Please grant automation permissions in System Settings > Privacy & Security > Automation.',
+        errorCode: 'MAIL_APP_NO_PERMISSIONS'
+    });
+}
+```
+
+**Why this is required:**
+- Server can start without Mail.app running (important for launchd)
+- Provides consistent error handling across all tools
+- Distinguishes between "not running" and "no permissions" cases
+- Returns user-friendly error messages to the LLM
+
+**Error Code Handling:**
+The `jxa.Execute()` function in Go detects these error codes:
+- `MAIL_APP_NOT_RUNNING` - Returns: "Mail.app is not running. Please start Mail.app and try again"
+- `MAIL_APP_NO_PERMISSIONS` - Returns: "Mail.app automation permission denied. Please grant permission in System Settings > Privacy & Security > Automation"
+
 #### Error Handling and Logging
 
+- **Check Mail.app running status FIRST** (before any other operations)
 - Validate all arguments before try-catch
 - Always wrap operations in try-catch
-- Return structured JSON: `{success: bool, data/error: ...}`
+- Return structured JSON: `{success: bool, data/error: ..., errorCode?: string}`
 - Include descriptive error messages
 - **NEVER use console.log()** - use the log() helper function instead
 - **NEVER ignore errors silently** - always log errors using the log() helper:
@@ -542,8 +599,23 @@ The `jxa.Execute` function:
 - Runs the osascript command
 - Parses JSON output
 - Checks for script-level errors
+- Detects `errorCode: 'MAIL_APP_NOT_AVAILABLE'` and returns user-friendly error
 - Extracts and returns the `data` field (REQUIRED in all scripts)
 - Returns descriptive errors for any failures
+
+**Error Codes:**
+Scripts can return error codes in the JSON response:
+```javascript
+return JSON.stringify({
+    success: false,
+    error: 'Descriptive error message',
+    errorCode: 'ERROR_CODE_HERE'
+});
+```
+
+Currently supported error codes:
+- `MAIL_APP_NOT_RUNNING` - Mail.app is not running (detected by `Mail.running()` check)
+- `MAIL_APP_NO_PERMISSIONS` - Mail.app is running but permission denied to access it
 
 **Important:** Scripts must wrap all output in a `data` field. The executor will fail if the `data` field is missing.
 

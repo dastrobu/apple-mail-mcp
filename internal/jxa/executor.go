@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 
 	"github.com/dastrobu/apple-mail-mcp/internal/log"
@@ -11,10 +12,17 @@ import (
 
 // Result represents the result of a JXA script execution
 type Result struct {
-	Success bool           `json:"success"`
-	Data    map[string]any `json:"data,omitempty"`
-	Error   string         `json:"error,omitempty"`
+	Success   bool           `json:"success"`
+	Data      map[string]any `json:"data,omitempty"`
+	Error     string         `json:"error,omitempty"`
+	ErrorCode string         `json:"errorCode,omitempty"`
 }
+
+// Error codes returned by JXA scripts
+const (
+	ErrorCodeMailAppNotRunning    = "MAIL_APP_NOT_RUNNING"
+	ErrorCodeMailAppNoPermissions = "MAIL_APP_NO_PERMISSIONS"
+)
 
 // Execute runs a JXA script with the given arguments and returns the parsed result
 func Execute(ctx context.Context, script string, args ...string) (any, error) {
@@ -53,6 +61,16 @@ func Execute(ctx context.Context, script string, args ...string) (any, error) {
 		errMsg := "unknown error (script returned success=false with no error message)"
 		if errVal, ok := result["error"].(string); ok && errVal != "" {
 			errMsg = errVal
+		}
+
+		// Check for specific error codes
+		if errorCode, ok := result["errorCode"].(string); ok {
+			switch errorCode {
+			case ErrorCodeMailAppNotRunning:
+				return nil, fmt.Errorf("Mail.app is not running. Please start Mail.app and try again")
+			case ErrorCodeMailAppNoPermissions:
+				return nil, fmt.Errorf("Mail.app automation permission denied. Please grant permission to %q in System Settings > Privacy & Security > Automation", os.Args[0])
+			}
 		}
 
 		// Include logs if available for better debugging

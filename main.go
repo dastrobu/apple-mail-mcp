@@ -7,9 +7,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/dastrobu/apple-mail-mcp/internal/completion"
-	"github.com/dastrobu/apple-mail-mcp/internal/jxa"
 	"github.com/dastrobu/apple-mail-mcp/internal/launchd"
 	applog "github.com/dastrobu/apple-mail-mcp/internal/log"
 	"github.com/dastrobu/apple-mail-mcp/internal/opts"
@@ -138,31 +138,10 @@ func run(options *opts.Options) error {
 			}())
 	}
 
-	// Run startup check to verify Mail.app is accessible
-	log.Println("Running Mail.app connectivity check...")
-	startupData, err := jxa.StartupCheck(ctx)
-	if err != nil {
-		return fmt.Errorf(`Mail.app connectivity check failed: %w
-
-This usually means either:
-1. Mail.app is not running - Please start Mail.app
-2. Missing automation permissions - Grant permission in System Settings > Privacy & Security > Automation
-
-For detailed troubleshooting, see: https://github.com/dastrobu/apple-mail-mcp#troubleshooting`, err)
-	}
-	log.Println("Mail.app is accessible and ready")
-
-	// Print Mail.app properties as JSON when debugging is enabled
-	if options.Debug {
-		if properties, ok := startupData["properties"].(map[string]any); ok {
-			propertiesJSON, err := json.MarshalIndent(properties, "", "  ")
-			if err != nil {
-				log.Printf("[DEBUG] Failed to marshal properties: %v\n", err)
-			} else {
-				log.Printf("[DEBUG] Mail.app Properties:\n%s\n", string(propertiesJSON))
-			}
-		}
-	}
+	// Note: We don't check Mail.app connectivity at startup because:
+	// 1. Mail.app may not be running yet (e.g., launchd starts before user opens Mail)
+	// 2. Each tool call will detect and report Mail.app availability gracefully
+	// 3. This allows the server to start without requiring Mail.app to be running
 
 	// Log to stderr (stdout is used for MCP communication in stdio mode)
 	log.Printf("Apple Mail MCP Server v%s initialized\n", serverVersion)
@@ -173,6 +152,9 @@ For detailed troubleshooting, see: https://github.com/dastrobu/apple-mail-mcp#tr
 	switch transport {
 	case "stdio":
 		log.Println("Using STDIO transport")
+		log.Println("⚠️  WARNING: STDIO transport requires high permissions and grants automation access to the parent process (Terminal, Claude Desktop, etc.)")
+		log.Println("⚠️  It is strongly recommended to use launchd instead: apple-mail-mcp launchd create")
+		log.Printf("⚠️  If STDIO is required for testing, consider running 'tccutil reset AppleEvents %s' afterwards\n", os.Args[0])
 		if err := srv.Run(ctx, &mcp.StdioTransport{}); err != nil {
 			return err
 		}

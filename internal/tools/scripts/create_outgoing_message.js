@@ -2,6 +2,15 @@ function run(argv) {
   const Mail = Application("Mail");
   Mail.includeStandardAdditions = true;
 
+  // Check if Mail.app is running
+  if (!Mail.running()) {
+    return JSON.stringify({
+      success: false,
+      error: "Mail.app is not running. Please start Mail.app and try again.",
+      errorCode: "MAIL_APP_NOT_RUNNING",
+    });
+  }
+
   // Collect logs instead of using console.log
   const logs = [];
 
@@ -232,9 +241,12 @@ function run(argv) {
       logs: logs.join("\n"),
     });
   } catch (e) {
+    // If Mail.app is running but we can't access it, it's a permissions issue
     return JSON.stringify({
       success: false,
-      error: "Failed to create outgoing message: " + e.toString(),
+      error:
+        "Permission denied to access Mail.app. Please grant automation permissions in System Settings > Privacy & Security > Automation.",
+      errorCode: "MAIL_APP_NO_PERMISSIONS",
     });
   }
 }

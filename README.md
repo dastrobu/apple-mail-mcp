@@ -24,12 +24,13 @@ This MCP server enables AI assistants and other MCP clients to interact with App
 - **Reply to Message**: Create a reply to a message and save it as a draft
 - **Create Outgoing Message**: Create new email drafts with optional Markdown formatting
 - **Rich Text Support**: Format emails with Markdown (headings, bold, italic, lists, code blocks, and more)
+- **Graceful Error Handling**: Clear error messages when Mail.app closes or becomes unavailable
 
 ## Requirements
 
 - macOS (Mail.app is macOS-only)
 - Go 1.26 or later
-- Mail.app must be running and configured with at least one email account
+- Mail.app configured with at least one email account (does not need to be running at server startup)
 - Automation permissions (see [Automation Permissions](#automation-permissions) below)
 
 ## Installation
@@ -333,7 +334,12 @@ Mail.app startup check failed: osascript execution failed: signal: killed
 
 ### Mail.app Not Running
 
-Simply open Mail.app. It must be running for the server to work.
+The server can start without Mail.app running. When you try to use a tool and Mail.app is not running, you'll receive a clear error message:
+
+- **"Mail.app is not running. Please start Mail.app and try again"** - Simply open Mail.app and retry
+- **"Mail.app automation permission denied..."** - Grant automation permissions in System Settings > Privacy & Security > Automation
+
+Tool calls will automatically work once Mail.app is started and permissions are granted.
 
 ## Available Tools
 

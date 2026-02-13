@@ -127,7 +127,7 @@ func TestExecute_WithArguments(t *testing.T) {
 function run(argv) {
 	const arg1 = argv[0] || '';
 	const arg2 = parseInt(argv[1]) || 0;
-	
+
 	return JSON.stringify({
 		success: true,
 		data: {
@@ -268,4 +268,77 @@ func TestResult_JSONMarshaling(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExecute_MailAppNotRunning(t *testing.T) {
+	// Test script that returns MAIL_APP_NOT_RUNNING error code
+	script := `
+function run(argv) {
+	return JSON.stringify({
+		success: false,
+		error: "Mail.app is not running. Please start Mail.app and try again.",
+		errorCode: "MAIL_APP_NOT_RUNNING"
+	});
+}
+`
+
+	ctx := context.Background()
+	_, err := Execute(ctx, script)
+
+	if err == nil {
+		t.Fatal("Execute() error = nil, want error")
+	}
+
+	// Verify the error message contains the expected text
+	errMsg := err.Error()
+	expectedPhrases := []string{
+		"Mail.app is not running",
+		"Please start Mail.app and try again",
+	}
+
+	for _, phrase := range expectedPhrases {
+		if !strings.Contains(errMsg, phrase) {
+			t.Errorf("Execute() error message missing expected phrase: %q\nGot: %s", phrase, errMsg)
+		}
+	}
+
+	t.Logf("Error message: %v", err)
+}
+
+func TestExecute_MailAppNoPermissions(t *testing.T) {
+	// Test script that returns MAIL_APP_NO_PERMISSIONS error code
+	script := `
+function run(argv) {
+	return JSON.stringify({
+		success: false,
+		error: "Permission denied to access Mail.app. Please grant automation permissions.",
+		errorCode: "MAIL_APP_NO_PERMISSIONS"
+	});
+}
+`
+
+	ctx := context.Background()
+	_, err := Execute(ctx, script)
+
+	if err == nil {
+		t.Fatal("Execute() error = nil, want error")
+	}
+
+	// Verify the error message contains the expected text
+	errMsg := err.Error()
+	expectedPhrases := []string{
+		"Mail.app automation permission denied",
+		"Please grant permission",
+		"System Settings",
+		"Privacy & Security",
+		"Automation",
+	}
+
+	for _, phrase := range expectedPhrases {
+		if !strings.Contains(errMsg, phrase) {
+			t.Errorf("Execute() error message missing expected phrase: %q\nGot: %s", phrase, errMsg)
+		}
+	}
+
+	t.Logf("Error message: %v", err)
 }

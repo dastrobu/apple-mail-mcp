@@ -4,6 +4,15 @@ function run(argv) {
     const Mail = Application("Mail");
     Mail.includeStandardAdditions = true;
 
+    // Check if Mail.app is running
+    if (!Mail.running()) {
+      return JSON.stringify({
+        success: false,
+        error: "Mail.app is not running. Please start Mail.app and try again.",
+        errorCode: "MAIL_APP_NOT_RUNNING",
+      });
+    }
+
     // Collect logs instead of using console.log
     const logs = [];
 
@@ -25,9 +34,21 @@ function run(argv) {
     const filterEnabled = filterEnabledArg.toLowerCase() === "true";
 
     // Get accounts - use whose() for filtering if enabled filter is true
-    const accounts = filterEnabled
-      ? Mail.accounts.whose({ enabled: true })()
-      : Mail.accounts();
+    let accounts;
+    try {
+      accounts = filterEnabled
+        ? Mail.accounts.whose({ enabled: true })()
+        : Mail.accounts();
+    } catch (e) {
+      // If Mail.app is running but we can't access it, it's a permissions issue
+      // (macOS returns generic "Error: An error occurred." for permission denials)
+      return JSON.stringify({
+        success: false,
+        error:
+          "Permission denied to access Mail.app. Please grant automation permissions in System Settings > Privacy & Security > Automation.",
+        errorCode: "MAIL_APP_NO_PERMISSIONS",
+      });
+    }
     const accountList = [];
 
     // Iterate through accounts and gather information

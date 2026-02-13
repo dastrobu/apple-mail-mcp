@@ -4,6 +4,15 @@ function run(argv) {
   const Mail = Application("Mail");
   Mail.includeStandardAdditions = true;
 
+  // Check if Mail.app is running
+  if (!Mail.running()) {
+    return JSON.stringify({
+      success: false,
+      error: "Mail.app is not running. Please start Mail.app and try again.",
+      errorCode: "MAIL_APP_NOT_RUNNING",
+    });
+  }
+
   // Collect logs instead of using console.log
   const logs = [];
 
