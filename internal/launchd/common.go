@@ -35,6 +35,7 @@ type Config struct {
 	LogPath    string
 	ErrPath    string
 	Debug      bool
+	RunAtLoad  bool
 }
 
 // PlistPath returns the full path to the plist file

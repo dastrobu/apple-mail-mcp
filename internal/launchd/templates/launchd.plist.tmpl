@@ -15,8 +15,9 @@
         <string>--debug</string>
         -->{{end}}
     </array>
-    <key>RunAtLoad</key>
+{{if .RunAtLoad}}    <key>RunAtLoad</key>
     <true/>
+{{end}}
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>

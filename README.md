@@ -49,6 +49,8 @@ apple-mail-mcp launchd create
 
 **Important**: After installation, you must run `apple-mail-mcp launchd create` to set up the launchd service. This ensures automation permissions are granted to the binary itself (not Terminal or Claude Desktop).
 
+**Note**: When you upgrade via `brew upgrade apple-mail-mcp`, the launchd service will automatically restart with the new version if it's already running. You don't need to manually recreate the service.
+
 ### Option 2: Download Binary
 
 Download the latest release from [GitHub Releases](https://github.com/dastrobu/apple-mail-mcp/releases):
@@ -92,6 +94,39 @@ go build -o apple-mail-mcp .
 ./apple-mail-mcp launchd create
 ```
 
+## Upgrading
+
+### Homebrew
+
+When you upgrade via Homebrew, the launchd service will automatically restart with the new version:
+
+```bash
+brew upgrade apple-mail-mcp
+```
+
+The upgrade process:
+1. Downloads and installs the new version
+2. Updates the symlink at `/opt/homebrew/bin/apple-mail-mcp` to point to the new version
+3. If a launchd service exists, automatically recreates it with the new binary while preserving your settings:
+   - Port (if customized)
+   - Host (if customized)
+   - Debug flag (if enabled)
+   - RunAtLoad setting (automatic startup behavior)
+4. No manual intervention required
+
+**Note**: The upgrade preserves all your custom settings by parsing the existing plist and recreating the service with the same configuration.
+
+### Manual Installation
+
+If you installed manually (via binary download or Go install), you'll need to restart the launchd service after upgrading:
+
+```bash
+# After upgrading the binary
+apple-mail-mcp launchd create
+```
+
+This will recreate the service with the new binary path.
+
 ## Usage
 
 The server supports two transport modes: **HTTP (recommended)** and STDIO.
@@ -109,6 +144,9 @@ Create a launch agent to run the server in the background.
 **Quick setup using the built-in subcommand:**
 
 ```bash
+# See available options
+apple-mail-mcp launchd create -h
+
 # Run the setup subcommand
 apple-mail-mcp launchd create
 
@@ -117,6 +155,9 @@ apple-mail-mcp --port=3000 launchd create
 
 # With debug logging enabled
 apple-mail-mcp --debug launchd create
+
+# Disable automatic startup on login (start manually instead)
+apple-mail-mcp launchd create --disable-run-at-load
 
 # The subcommand will:
 # - Create the launchd plist
@@ -174,17 +215,28 @@ This is why **HTTP mode with launchd** is recommended - it ensures the binary (n
 
 ### Command-Line Options
 
+Use `-h` or `--help` with any command to see available options:
+
+```bash
+apple-mail-mcp -h                    # Show main help
+apple-mail-mcp launchd -h            # Show launchd subcommands
+apple-mail-mcp launchd create -h     # Show launchd create options
+```
+
+**Available options:**
+
 ```
 --transport=[stdio|http]  Transport type (default: stdio)
 --port=PORT              HTTP port (default: 8787, only used with --transport=http)
 --host=HOST              HTTP host (default: localhost, only used with --transport=http)
 --debug                  Enable debug logging of tool calls and results to stderr
 --rich-text-styles=PATH  Path to custom rich text styles YAML file (uses embedded default if not specified)
---help                   Show help message
+-h, --help               Show help message
 
 Commands:
   launchd create         Set up launchd service for automatic startup (HTTP mode)
                          Use --debug flag to enable debug logging in the service
+                         Use --disable-run-at-load to prevent automatic startup on login
   launchd remove         Remove launchd service
   completion bash        Generate bash completion script
 ```

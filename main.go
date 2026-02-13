@@ -221,6 +221,9 @@ func createLaunchd(options *opts.Options) error {
 	if options.Debug {
 		cfg.Debug = options.Debug
 	}
+	if options.Launchd.Create.DisableRunAtLoad {
+		cfg.RunAtLoad = false
+	}
 
 	return launchd.Create(cfg)
 }

@@ -49,7 +49,8 @@ type LaunchdCmd struct {
 
 // LaunchdCreateCmd represents the 'launchd create' command
 type LaunchdCreateCmd struct {
-	Handler func() error
+	DisableRunAtLoad bool `long:"disable-run-at-load" description:"Disable automatic startup on login (service must be started manually)"`
+	Handler          func() error
 }
 
 // Execute runs the launchd create command
@@ -90,14 +91,15 @@ func Parse() (*flags.Parser, error) {
 		GlobalOpts.Host = launchd.DefaultHost
 	}
 
-	parser := flags.NewParser(&GlobalOpts, flags.HelpFlag)
+	parser := flags.NewParser(&GlobalOpts, flags.HelpFlag|flags.PassDoubleDash)
 
 	_, err := parser.Parse()
 	if err != nil {
 		if flagsErr, ok := err.(*flags.Error); ok {
 			switch flagsErr.Type {
 			case flags.ErrHelp:
-				// Help was displayed, exit cleanly
+				// Print help message
+				parser.WriteHelp(os.Stdout)
 				os.Exit(0)
 			case flags.ErrCommandRequired:
 				// No command specified - that's OK, we'll run the server

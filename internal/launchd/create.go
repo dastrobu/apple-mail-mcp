@@ -1,11 +1,13 @@
 package launchd
 
 import (
+	"bytes"
 	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"text/template"
 	"time"
 )
@@ -15,16 +17,39 @@ var plistTemplate string
 
 // DefaultConfig returns the default launchd configuration
 func DefaultConfig() (*Config, error) {
-	// Get the path to the current executable
-	binaryPath, err := os.Executable()
+	// Get current executable path for fallback and version comparison
+	currentExe, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("❌ failed to get executable path: %w", err)
 	}
 
-	// Resolve symlinks to get the real path
-	binaryPath, err = filepath.EvalSymlinks(binaryPath)
-	if err != nil {
-		return nil, fmt.Errorf("❌ failed to resolve binary path: %w", err)
+	// Try to find the binary using 'which' first (e.g., /opt/homebrew/bin/apple-mail-mcp)
+	// This ensures we use the symlinked version that will survive upgrades
+	var binaryPath string
+	cmd := exec.Command("which", "apple-mail-mcp")
+	output, err := cmd.Output()
+	if err == nil && len(output) > 0 {
+		// Found via 'which', use this path (trim whitespace)
+		whichPath := string(output[:len(output)-1]) // Remove trailing newline
+
+		// Verify that the version from 'which' matches current executable
+		if versionsMatch(whichPath, currentExe) {
+			binaryPath = whichPath
+		} else {
+			// Version mismatch - fall back to current executable
+			fmt.Fprintf(os.Stderr, "⚠️  Warning: 'which apple-mail-mcp' found %s but version doesn't match current executable\n", whichPath)
+			fmt.Fprintf(os.Stderr, "   Using current executable path instead: %s\n", currentExe)
+			binaryPath, err = filepath.EvalSymlinks(currentExe)
+			if err != nil {
+				return nil, fmt.Errorf("❌ failed to resolve binary path: %w", err)
+			}
+		}
+	} else {
+		// Fallback to current executable path
+		binaryPath, err = filepath.EvalSymlinks(currentExe)
+		if err != nil {
+			return nil, fmt.Errorf("❌ failed to resolve binary path: %w", err)
+		}
 	}
 
 	// Expand tilde in log paths
@@ -41,7 +66,47 @@ func DefaultConfig() (*Config, error) {
 		Port:       DefaultPort,
 		LogPath:    logPath,
 		ErrPath:    errPath,
+		RunAtLoad:  true, // Default: start service on login
 	}, nil
+}
+
+// versionsMatch checks if two binary paths have the same version string
+func versionsMatch(path1, path2 string) bool {
+	version1 := getBinaryVersion(path1)
+	version2 := getBinaryVersion(path2)
+
+	// If either version is empty or "dev", skip version check
+	// (happens during development/testing)
+	if version1 == "" || version2 == "" || version1 == "dev" || version2 == "dev" {
+		return true
+	}
+
+	return version1 == version2
+}
+
+// getBinaryVersion executes a binary with --version and extracts the version string
+func getBinaryVersion(binaryPath string) string {
+	cmd := exec.Command(binaryPath, "--version")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = nil // Ignore stderr
+
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+
+	// Parse output like "apple-mail-mcp version 0.1.0"
+	output := stdout.String()
+	lines := strings.Split(output, "\n")
+	if len(lines) > 0 {
+		// Extract version from first line
+		parts := strings.Fields(lines[0])
+		if len(parts) >= 3 && parts[0] == "apple-mail-mcp" && parts[1] == "version" {
+			return parts[2]
+		}
+	}
+
+	return ""
 }
 
 // createPlist creates the launchd plist file
@@ -81,6 +146,7 @@ func createPlist(cfg *Config) error {
 		LogPath    string
 		ErrPath    string
 		Debug      bool
+		RunAtLoad  bool
 	}{
 		Label:      Label,
 		BinaryPath: cfg.BinaryPath,
@@ -89,6 +155,7 @@ func createPlist(cfg *Config) error {
 		LogPath:    cfg.LogPath,
 		ErrPath:    cfg.ErrPath,
 		Debug:      cfg.Debug,
+		RunAtLoad:  cfg.RunAtLoad,
 	}
 
 	if err := tmpl.Execute(file, data); err != nil {

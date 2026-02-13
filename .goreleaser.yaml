@@ -77,6 +77,45 @@ brews:
     install: |
       bin.install "apple-mail-mcp"
     
+    post_install: |
+      # Check if launchd service exists and recreate it after upgrade
+      # This preserves all settings (port, host, debug, RunAtLoad) from the existing plist
+      plist_path = "#{ENV["HOME"]}/Library/LaunchAgents/com.github.dastrobu.apple-mail-mcp.plist"
+      if File.exist?(plist_path)
+        # Read the existing plist to extract settings
+        plist_content = File.read(plist_path)
+        
+        # Extract port (default: 8787)
+        port = plist_content.match(/--port=(\d+)/)
+        port_flag = port ? "--port=#{port[1]}" : ""
+        
+        # Extract host (default: localhost)
+        host = plist_content.match(/--host=([^\s<]+)/)
+        host_flag = host ? "--host=#{host[1]}" : ""
+        
+        # Check if debug is enabled
+        has_debug = plist_content.include?("<string>--debug</string>")
+        debug_flag = has_debug ? "--debug" : ""
+        
+        # Check if RunAtLoad is set
+        has_run_at_load = plist_content.include?("<key>RunAtLoad</key>")
+        run_at_load_flag = has_run_at_load ? "" : "--disable-run-at-load"
+        
+        # Build command with all flags
+        cmd = ["#{bin}/apple-mail-mcp"]
+        cmd << port_flag unless port_flag.empty?
+        cmd << host_flag unless host_flag.empty?
+        cmd << debug_flag unless debug_flag.empty?
+        cmd << "launchd"
+        cmd << "create"
+        cmd << run_at_load_flag unless run_at_load_flag.empty?
+        
+        # Recreate the service preserving all settings
+        system(*cmd.reject(&:empty?))
+        
+        ohai "Recreated launchd service with updated binary (preserved existing settings)"
+      end
+    
     caveats: |
       Apple Mail MCP Server has been installed!
       
