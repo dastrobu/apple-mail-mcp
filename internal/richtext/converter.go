@@ -413,6 +413,67 @@ func applyPrefixToBlocks(blocks []StyledBlock, prefixContent string, prefixStyle
 	return result
 }
 
+// applyBlockquoteStyleToChildren applies blockquote styling to child blocks that use default styling
+// Headings, code blocks, and other explicitly styled elements keep their own styling
+func applyBlockquoteStyleToChildren(blocks []StyledBlock, blockquoteStyle PreparedStyle, defaultFont string, defaultSize int) []StyledBlock {
+	result := make([]StyledBlock, 0, len(blocks))
+
+	for _, block := range blocks {
+		// Skip margin blocks
+		if block.Type == "" {
+			result = append(result, block)
+			continue
+		}
+
+		// Check if block uses default styling (paragraph, list_item without custom style)
+		// Don't override headings, code blocks, or other explicitly styled elements
+		usesDefaultStyle := false
+		if block.Type == BlockTypeParagraph || block.Type == BlockTypeListItem {
+			// Check if using default font
+			if block.Font == defaultFont && block.Size == defaultSize {
+				usesDefaultStyle = true
+			}
+		}
+
+		if usesDefaultStyle {
+			// Apply blockquote styling
+			styledBlock := block
+			if blockquoteStyle.Font != nil {
+				styledBlock.Font = *blockquoteStyle.Font
+			}
+			if blockquoteStyle.Size != nil {
+				styledBlock.Size = *blockquoteStyle.Size
+			}
+			// Apply color to inline styles if blockquote has color
+			if blockquoteStyle.Color != nil && len(block.InlineStyles) > 0 {
+				// Find if there's already a color style covering the whole line
+				hasFullColorStyle := false
+				lineLen := len([]rune(strings.TrimSuffix(block.Text, "\n")))
+				for _, style := range block.InlineStyles {
+					if style.Start == 0 && style.End == lineLen && style.Color != nil {
+						hasFullColorStyle = true
+						break
+					}
+				}
+				// Only add color if not already styled
+				if !hasFullColorStyle {
+					styledBlock.InlineStyles = append([]InlineStyle{{
+						Start: 0,
+						End:   lineLen,
+						Color: blockquoteStyle.Color,
+					}}, styledBlock.InlineStyles...)
+				}
+			}
+			result = append(result, styledBlock)
+		} else {
+			// Keep original styling for headings, code blocks, etc.
+			result = append(result, block)
+		}
+	}
+
+	return result
+}
+
 // convertBlockquote converts a blockquote to styled blocks by recursively processing children
 func convertBlockquote(node *ast.Blockquote, source []byte, config *PreparedConfig, isFirst bool) ([]StyledBlock, error) {
 	style := config.GetStyle("blockquote")
@@ -485,6 +546,13 @@ func convertBlockquote(node *ast.Blockquote, source []byte, config *PreparedConf
 		prevChild = child
 		contentBlocks = append(contentBlocks, childBlocks...)
 	}
+
+	// Apply blockquote styling to unstyled children (paragraphs, list items)
+	// Get default styling to detect which blocks need blockquote style
+	defaults := config.GetStyle("paragraph")
+	defaultFont := safeString(defaults.Font)
+	defaultSize := safeInt(defaults.Size)
+	contentBlocks = applyBlockquoteStyleToChildren(contentBlocks, style, defaultFont, defaultSize)
 
 	// Apply blockquote prefix to content blocks
 	var prefixContent string

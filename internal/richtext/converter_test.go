@@ -217,9 +217,9 @@ styles:
 				if blocks[0].Text != "> This is a quote\n" {
 					t.Errorf("Expected text '> This is a quote\\n', got %q", blocks[0].Text)
 				}
-				// Paragraph uses default font, not blockquote font
-				if blocks[0].Font != "Helvetica" {
-					t.Errorf("Expected font Helvetica, got %s", blocks[0].Font)
+				// Paragraph inherits blockquote font since it uses default styling
+				if blocks[0].Font != "Helvetica-Oblique" {
+					t.Errorf("Expected font Helvetica-Oblique, got %s", blocks[0].Font)
 				}
 			},
 		},
