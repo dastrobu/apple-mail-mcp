@@ -1,4 +1,3 @@
-
 # Apple Mail MCP Server
 
 [![CI](https://github.com/dastrobu/apple-mail-mcp/actions/workflows/ci.yaml/badge.svg)](https://github.com/dastrobu/apple-mail-mcp/actions/workflows/ci.yaml)
@@ -7,6 +6,7 @@ A Model Context Protocol (MCP) server providing programmatic access to macOS Mai
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -141,6 +141,7 @@ apple-mail-mcp launchd create
 ```
 
 **Note**: Ensure `$GOPATH/bin` (or `$HOME/go/bin`) is in your PATH, or use the full path:
+
 ```bash
 ~/go/bin/apple-mail-mcp launchd create
 ```
@@ -217,7 +218,6 @@ Check logs: `tail -f ~/Library/Logs/com.github.dastrobu.apple-mail-mcp/apple-mai
 To stop: `launchctl stop com.github.dastrobu.apple-mail-mcp`
 To unload: `launchctl unload ~/Library/LaunchAgents/com.github.dastrobu.apple-mail-mcp.plist`
 
-
 #### Option 2: Running from Terminal (Quick Testing)
 
 If you launch from Terminal, **Terminal will be asked for permissions**, not the binary:
@@ -233,7 +233,7 @@ apple-mail-mcp --transport=http --port=3000
 apple-mail-mcp --transport=http --host=0.0.0.0 --port=3000
 ```
 
-This is fine for quick testing, but for production use launchd (Option 1) or Finder (Option 2).
+This is fine for quick testing, but for production use launchd.
 
 **Connect MCP clients to:** `http://localhost:8787`
 
@@ -273,23 +273,23 @@ Configure VS Code (`~/Library/Application Support/Code/User/mcp.json` on macOS):
 Make sure the server is running, see [HTTP Transport](#http-transport-recommended)
 
 Configure Zed (`~/.config/zed/settings.json`):
-  ```json
-  {
-    "context_servers": {
-      "apple-mail-mcp": {
-        "settings": {
-          "url": "http://localhost:8787"
-        }
-      }
+
+```json
+{
+  "context_servers": {
+    "apple-mail-mcp": {
+      "url": "http://localhost:8787"
     }
   }
-  ```
+}
+```
 
 #### Claude Desktop Configuration
 
 Make sure the server is running, see [HTTP Transport](#http-transport-recommended)
 
 Configure Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
 ```json
 {
   "mcpServers": {
@@ -607,6 +607,7 @@ The tool uses JXA's `whose()` method for constant-time O(1) filtering, which is 
 **Examples:**
 
 Find unread messages from a specific sender:
+
 ```json
 {
   "account": "Work",
@@ -618,6 +619,7 @@ Find unread messages from a specific sender:
 ```
 
 Find flagged messages from last week:
+
 ```json
 {
   "account": "Personal",
@@ -629,6 +631,7 @@ Find flagged messages from last week:
 ```
 
 Find all messages with specific subject in nested mailbox:
+
 ```json
 {
   "account": "Work",
@@ -785,11 +788,11 @@ styles:
     margin_top: 6
     margin_bottom: null
     prefix:
-      content: "  "  # Indent code blocks with 2 spaces
+      content: "  " # Indent code blocks with 2 spaces
 
   blockquote:
     font: "Helvetica-Oblique"
-    size: null  # Inherits from defaults
+    size: null # Inherits from defaults
     color: *50_percent_gray
     margin_top: 6
     margin_bottom: 6
@@ -811,7 +814,7 @@ styles:
     color: *50_percent_gray
 
   link:
-    color: *blue  # Or null to use Mail.app's default link color
+    color: *blue # Or null to use Mail.app's default link color
 ```
 
 **Key Points:**
@@ -857,6 +860,7 @@ brew upgrade apple-mail-mcp
 ```
 
 The upgrade process:
+
 1. Downloads and installs the new version
 2. Updates the symlink at `/opt/homebrew/bin/apple-mail-mcp` to point to the new version
 3. If a launchd service exists, automatically recreates it with the new binary while preserving your settings:
