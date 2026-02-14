@@ -103,11 +103,14 @@ brew tap dastrobu/tap
 # Install
 brew install apple-mail-mcp
 
-# Set up launchd service (IMPORTANT for proper permissions)
+# Start the service (Standard)
+brew services start apple-mail-mcp
+
+# OR use the built-in subcommand for more customization (port, debug)
 apple-mail-mcp launchd create
 ```
 
-**Important**: After installation, you must run `apple-mail-mcp launchd create` to set up the launchd service. This ensures automation permissions are granted to the binary itself (not Terminal or Claude Desktop).
+**Important**: For proper automation permissions, you must run the server as a service (not from Terminal). Using `brew services start` is the standard way, while `apple-mail-mcp launchd create` offers more customization.
 
 **Note**: When you upgrade via `brew upgrade apple-mail-mcp`, the launchd service will automatically restart with the new version if it's already running. You don't need to manually recreate the service.
 
@@ -887,17 +890,22 @@ This will recreate the service with the new binary path.
 
 ### Homebrew
 
-**⚠️ IMPORTANT:** Remove the launchd service BEFORE uninstalling:
+**⚠️ IMPORTANT:** Stop the service BEFORE uninstalling:
 
 ```bash
-# Step 1: Remove the launchd service (if you created one)
+# Step 1: Stop the service (whichever method you used)
+brew services stop apple-mail-mcp
+# OR
 apple-mail-mcp launchd remove
 
 # Step 2: Uninstall the package
 brew uninstall apple-mail-mcp
 
-# Step 3 (optional): Remove logs
-rm -rf ~/Library/Logs/com.github.dastrobu.apple-mail-mcp/
+# Step 3 (Optional): Remove logs
+# If you used brew services:
+rm $(brew --prefix)/var/log/apple-mail-mcp.*
+# If you used apple-mail-mcp launchd create:
+rm -r ~/Library/Logs/com.github.dastrobu.apple-mail-mcp/
 ```
 
 **Why this order matters:** The `launchd remove` command needs the binary to properly unload and remove the service. If you uninstall first, you'll need to manually remove the plist file.
@@ -922,7 +930,7 @@ apple-mail-mcp launchd remove
 rm /usr/local/bin/apple-mail-mcp
 
 # Optionally remove logs
-rm -rf ~/Library/Logs/com.github.dastrobu.apple-mail-mcp/
+rm -r ~/Library/Logs/com.github.dastrobu.apple-mail-mcp/
 ```
 
 ## Architecture
