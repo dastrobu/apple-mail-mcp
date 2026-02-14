@@ -162,17 +162,17 @@ Follow [Semantic Versioning](https://semver.org/):
 - **MINOR** version (v1.0.0 → v1.1.0): New features (backwards compatible)
 - **PATCH** version (v1.0.0 → v1.0.1): Bug fixes (backwards compatible)
 
-## Commit Message Conventions
+## Commit Messages
 
-For better changelogs, use conventional commits:
+For clear changelogs, consider using conventional commits (though all non-merge commits will be included):
 
 - `feat:` - New features
 - `fix:` - Bug fixes
 - `perf:` - Performance improvements
-- `docs:` - Documentation changes (excluded from changelog)
-- `test:` - Test changes (excluded from changelog)
-- `ci:` - CI changes (excluded from changelog)
-- `chore:` - Maintenance (excluded from changelog)
+- `docs:` - Documentation changes
+- `test:` - Test changes
+- `ci:` - CI changes
+- `chore:` - Maintenance
 
 Example:
 ```
