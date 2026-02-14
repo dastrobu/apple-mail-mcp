@@ -111,7 +111,7 @@ apple-mail-mcp launchd create
 
 **Note**: When you upgrade via `brew upgrade apple-mail-mcp`, the launchd service will automatically restart with the new version if it's already running. You don't need to manually recreate the service.
 
-➡️ **Next**: See [Usage](#usage) for how to configure and use the server.
+➡️ See [Usage](#usage) for how to configure and use the server.
 
 ### Option 2: Download Binary
 
@@ -128,7 +128,7 @@ tar -xzf apple-mail-mcp_*.tar.gz
 apple-mail-mcp launchd create
 ```
 
-➡️ **Next**: See [Usage](#usage) for how to configure and use the server.
+➡️ See [Usage](#usage) for how to configure and use the server.
 
 ### Option 3: Install via Go
 
@@ -145,7 +145,7 @@ apple-mail-mcp launchd create
 ~/go/bin/apple-mail-mcp launchd create
 ```
 
-➡️ **Next**: See [Usage](#usage) for how to configure and use the server.
+➡️ See [Usage](#usage) for how to configure and use the server.
 
 ### Option 4: Build from Source
 
@@ -160,7 +160,7 @@ go build -o apple-mail-mcp .
 ./apple-mail-mcp launchd create
 ```
 
-➡️ **Next**: See [Usage](#usage) for how to configure and use the server.
+➡️ See [Usage](#usage) for how to configure and use the server.
 
 ## Usage
 
@@ -170,7 +170,7 @@ The server supports two transport modes: **HTTP (recommended)** and STDIO.
 
 HTTP mode runs the server as a standalone daemon, allowing automation permissions to be granted directly to the `apple-mail-mcp` binary rather than the parent application.
 
-**Important:** To get permissions granted to the binary (not Terminal), you must launch it without Terminal as the parent process.
+⚠️ To get permissions granted to the binary (not Terminal), you must launch it without Terminal as the parent process.
 
 #### Option 1: Using launchd (Recommended for Production)
 
@@ -183,7 +183,7 @@ Create a launch agent to run the server in the background.
 apple-mail-mcp launchd create
 ```
 
-➡️ **Next**: See [Configuration](#configuration) to connect your MCP client.
+➡️ See [MCP Client Configuration](#mcp-client-configuration) to connect your MCP client.
 
 Or alternatively, create the launch agent manually:
 
@@ -237,7 +237,7 @@ This is fine for quick testing, but for production use launchd (Option 1) or Fin
 
 **Connect MCP clients to:** `http://localhost:8787`
 
-➡️ **Next**: See [MCP Client Configuration](#mcp-client-configuration) to connect your MCP client.
+➡️ See [MCP Client Configuration](#mcp-client-configuration) to connect your MCP client.
 
 ### STDIO Transport
 
@@ -247,7 +247,7 @@ STDIO mode runs the server as a child process of the MCP client. Note that autom
 apple-mail-mcp
 ```
 
-➡️ **Next**: See [MCP Client Configuration](#mcp-client-configuration) to connect your MCP client.
+➡️ See [MCP Client Configuration](#mcp-client-configuration) to connect your MCP client.
 
 ### MCP Client Configuration
 
@@ -348,7 +348,7 @@ APPLE_MAIL_MCP_DEBUG=true
 APPLE_MAIL_MCP_RICH_TEXT_STYLES=/path/to/custom_styles.yaml
 ```
 
-➡️ **Next**: See [MCP Client Configuration](#mcp-client-configuration) to connect your MCP client.
+➡️ See [MCP Client Configuration](#mcp-client-configuration) to connect your MCP client.
 
 ## Automation Permissions
 
