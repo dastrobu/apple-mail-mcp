@@ -31,7 +31,7 @@ func RegisterReplyToMessage(srv *mcp.Server, richtextConfig *richtext.PreparedCo
 	mcp.AddTool(srv,
 		&mcp.Tool{
 			Name:        "reply_to_message",
-			Description: "Creates a reply to a specific message with optional Markdown formatting and saves it as a draft in the Drafts mailbox. Mail.app automatically includes the quoted original message. The reply is not sent automatically - it remains in drafts for review and manual sending. WARNING: Do not use this tool to reply to draft messages (messages in the Drafts mailbox) as it will crash Mail.app. To modify existing drafts, use replace_outgoing_message with OutgoingMessage IDs. IMPORTANT: Use the mailboxPath field from get_selected_messages output, not the mailbox field. PERFORMANCE: Uses fast whose() filtering for constant-time message lookup regardless of mailbox size.",
+			Description: "Creates a reply to a specific message and saves it as a draft. To avoid a known rendering bug in Mail.app where reply content is automatically wrapped in a blockquote (causing it to appear with a purple/blue quote bar to recipients), this tool creates a NEW message with 'Re: ' prepended to the subject and recipients copied from the original message. Note: This approach does not include the quoted original message text. The draft remains in the Drafts mailbox for review and manual sending. IMPORTANT: Use the mailboxPath field from get_selected_messages output. PERFORMANCE: Uses fast whose() filtering.",
 			InputSchema: GenerateSchema[ReplyToMessageInput](),
 			Annotations: &mcp.ToolAnnotations{
 				Title:           "Reply to Message (Draft)",

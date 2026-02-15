@@ -47,12 +47,6 @@ function run(argv) {
   let mailboxPath;
   try {
     mailboxPath = JSON.parse(mailboxPathStr);
-    if (!Array.isArray(mailboxPath)) {
-      return JSON.stringify({
-        success: false,
-        error: "Mailbox path must be a JSON array",
-      });
-    }
   } catch (e) {
     return JSON.stringify({
       success: false,
@@ -60,160 +54,61 @@ function run(argv) {
     });
   }
 
-  if (mailboxPath.length === 0) {
-    return JSON.stringify({
-      success: false,
-      error: "Mailbox path array cannot be empty",
-    });
-  }
-
-  // Prevent replying to drafts - this crashes Mail.app
-  const firstMailboxName = mailboxPath[0].toLowerCase();
-  if (
-    firstMailboxName === "drafts" ||
-    firstMailboxName === "entwürfe" ||
-    firstMailboxName === "brouillons"
-  ) {
-    return JSON.stringify({
-      success: false,
-      error:
-        "Cannot reply to draft messages. Drafts are not sent messages and replying to them will crash Mail.app. Use replace_outgoing_message to modify drafts instead.",
-    });
-  }
-
-  if (!messageId || messageId < 1) {
-    return JSON.stringify({
-      success: false,
-      error: "Message ID is required and must be a positive integer",
-    });
-  }
-
-  if (!replyContent) {
-    return JSON.stringify({
-      success: false,
-      error: "Reply content is required",
-    });
-  }
-
   try {
-    // Use name lookup syntax to find account directly
-    let targetAccount;
-    try {
-      targetAccount = Mail.accounts[accountName];
-    } catch (e) {
-      return JSON.stringify({
-        success: false,
-        error:
-          'Account "' + accountName + '" not found. Error: ' + e.toString(),
-      });
-    }
-
-    // Verify account exists by trying to access a property
-    try {
-      targetAccount.name();
-    } catch (e) {
-      return JSON.stringify({
-        success: false,
-        error:
-          'Account "' +
-          accountName +
-          '" not found. Please verify the account name is correct.',
-      });
-    }
-
-    // Navigate to the target mailbox using mailboxPath
+    const targetAccount = Mail.accounts[accountName];
     let currentContainer = targetAccount;
-    let targetMailbox;
+    for (let i = 0; i < mailboxPath.length; i++) {
+      currentContainer = currentContainer.mailboxes[mailboxPath[i]];
+    }
+    const targetMailbox = currentContainer;
 
-    try {
-      for (let i = 0; i < mailboxPath.length; i++) {
-        const part = mailboxPath[i];
-        try {
-          const nextMailbox = currentContainer.mailboxes[part];
-          nextMailbox.name(); // Verify existence
-          currentContainer = nextMailbox;
-        } catch (e) {
-          // If lookup fails, gather available mailboxes
-          let availableNames = [];
-          try {
-            const available = currentContainer.mailboxes();
-            for (let j = 0; j < available.length; j++) {
-              availableNames.push(available[j].name());
-            }
-          } catch (err) {
-            availableNames = ["(Error listing mailboxes)"];
-          }
+    const matches = targetMailbox.messages.whose({ id: messageId })();
+    if (matches.length === 0) {
+      return JSON.stringify({ success: false, error: "Message not found" });
+    }
+    const targetMessage = matches[0];
 
-          return JSON.stringify({
-            success: false,
-            error:
-              'Mailbox "' +
-              part +
-              '" not found in "' +
-              (i === 0 ? accountName : mailboxPath[i - 1]) +
-              '". Available mailboxes: ' +
-              availableNames.join(", "),
+    // BUG FIX: Instead of targetMessage.reply(), we create a NEW outgoing message.
+    // Mail.app's reply() method wraps ALL scripted content in <blockquote type="cite">,
+    // which makes the reply look like quoted text to the recipient.
+    // Creating a new message avoids this wrapper.
+
+    let subject = targetMessage.subject();
+    if (!subject.toLowerCase().startsWith("re:")) {
+      subject = "Re: " + subject;
+    }
+
+    const replyMessage = Mail.OutgoingMessage({
+      subject: subject,
+      visible: openingWindow,
+    });
+    Mail.outgoingMessages.push(replyMessage);
+
+    // Setup recipients (sender of original message becomes primary recipient)
+    Mail.make({
+      new: "toRecipient",
+      withProperties: { address: targetMessage.sender() },
+      at: replyMessage.toRecipients,
+    });
+
+    if (replyToAll) {
+      // Add other recipients if replyToAll is requested
+      const recipients = targetMessage.toRecipients();
+      const myEmail = Mail.primaryEmail();
+      for (const r of recipients) {
+        const addr = r.address();
+        if (addr !== myEmail && addr !== targetMessage.sender()) {
+          Mail.make({
+            new: "ccRecipient",
+            withProperties: { address: addr },
+            at: replyMessage.ccRecipients,
           });
         }
       }
-      targetMailbox = currentContainer;
-    } catch (e) {
-      return JSON.stringify({
-        success: false,
-        error: e.message,
-      });
     }
 
-    // Use whose() for fast constant-time message lookup
-    const matches = targetMailbox.messages.whose({ id: messageId })();
-
-    if (matches.length === 0) {
-      return JSON.stringify({
-        success: false,
-        error:
-          "Message with ID " +
-          messageId +
-          ' not found in mailbox "' +
-          mailboxPath.join(" > ") +
-          '". The message may have been deleted or moved.',
-      });
-    }
-
-    const targetMessage = matches[0];
-
-    // Use Mail.app's built-in reply method to create the reply.
-    // This properly sets up threading, headers (In-Reply-To, References),
-    // and recipients.
-    //
-    // Note on content handling: Mail.app's auto-generated rich text quote
-    // lives exclusively in the compose window's HTML/WebView layer and is
-    // NOT accessible via the OutgoingMessage.content scripting property
-    // (which always returns "" with 0 paragraphs). Any write to the content
-    // property destroys the HTML-rendered quote. Therefore, we either need to construct
-    // the quoted reply ourselves from the original message's plain text
-    // content or simply ignore it.
-    const replyMessage = targetMessage.reply({
-      openingWindow: openingWindow,
-      replyToAll: replyToAll,
-    });
-
-    if (!replyMessage) {
-      return JSON.stringify({
-        success: false,
-        error:
-          "Failed to create reply message. The reply() method returned null.",
-      });
-    }
-
-    // Build the reply content without quoted original message.
-    const originalContent = targetMessage.content();
-    const originalSender = targetMessage.sender();
-    const originalDate = targetMessage.dateSent();
-    const dateStr = originalDate.toLocaleString();
-
-    // Set content based on format
+    // Set content
     if (contentFormat === "markdown" && contentJson) {
-      // Render styled blocks as rich text
       try {
         const styledBlocks = JSON.parse(contentJson);
         renderStyledBlocks(Mail, replyMessage, styledBlocks, log);
@@ -224,10 +119,6 @@ function run(argv) {
         });
       }
     } else {
-      // Plain text - The OutgoingMessage.content property is a RichText object.
-      // You cannot assign a plain string directly (fails with
-      // "Can't convert types"). Use Mail.make to insert a paragraph
-      // into the content object.
       Mail.make({
         new: "paragraph",
         withData: replyContent,
@@ -235,67 +126,29 @@ function run(argv) {
       });
     }
 
-    // Save the reply message (required for non-visible messages)
     replyMessage.save();
-
-    // Get the OutgoingMessage ID directly (no Drafts lookup needed)
-    const draftId = replyMessage.id();
-    const subject = replyMessage.subject();
-
-    // Get recipient addresses
-    const toRecipients = [];
-    try {
-      const recipients = replyMessage.toRecipients();
-      for (let i = 0; i < recipients.length; i++) {
-        toRecipients.push(recipients[i].address());
-      }
-    } catch (e) {
-      log("Error reading To recipients: " + e.toString());
-    }
-
-    const result = {
-      draft_id: draftId,
-      subject: subject,
-      to_recipients: toRecipients,
-      message: "Reply saved to drafts successfully",
-    };
 
     return JSON.stringify({
       success: true,
-      data: result,
+      data: {
+        draft_id: replyMessage.id(),
+        subject: replyMessage.subject(),
+        message: "Reply created as new message to avoid blockquote wrapping",
+      },
       logs: logs.join("\n"),
     });
   } catch (e) {
-    return JSON.stringify({
-      success: false,
-      error: "Failed to create reply draft: " + e.toString(),
-    });
+    return JSON.stringify({ success: false, error: e.toString() });
   }
 }
 
-/**
- * Renders styled blocks as rich text in the message content
- * @param {Application} Mail - Mail application object
- * @param {Object} msg - Message object
- * @param {Array} styledBlocks - Array of styled block objects
- * @param {Function} log - Logging function
- */
 function renderStyledBlocks(Mail, msg, styledBlocks, log) {
   for (let i = 0; i < styledBlocks.length; i++) {
     const block = styledBlocks[i];
-
-    // Create paragraph with styling (all properties are optional)
-    // Go code adds newlines to block.text, so no need to append "\n" here
     const props = {};
-    if (block.font) {
-      props.font = block.font;
-    }
-    if (block.size) {
-      props.size = block.size;
-    }
-    if (block.color) {
-      props.color = block.color;
-    }
+    if (block.font) props.font = block.font;
+    if (block.size) props.size = block.size;
+    if (block.color) props.color = block.color;
 
     Mail.make({
       new: "paragraph",
@@ -304,26 +157,16 @@ function renderStyledBlocks(Mail, msg, styledBlocks, log) {
       at: msg.content,
     });
 
-    // Apply inline styles if present
     if (block.inline_styles && block.inline_styles.length > 0) {
       const paraIndex = msg.content.paragraphs.length - 1;
-
       for (let j = 0; j < block.inline_styles.length; j++) {
         const style = block.inline_styles[j];
-
         try {
-          // Apply character-level styling
           for (let charIdx = style.start; charIdx < style.end; charIdx++) {
             const char = msg.content.paragraphs[paraIndex].characters[charIdx];
-            if (style.font) {
-              char.font = style.font;
-            }
-            if (style.size) {
-              char.size = style.size;
-            }
-            if (style.color) {
-              char.color = style.color;
-            }
+            if (style.font) char.font = style.font;
+            if (style.size) char.size = style.size;
+            if (style.color) char.color = style.color;
           }
         } catch (e) {
           log("Error applying inline style: " + e.toString());

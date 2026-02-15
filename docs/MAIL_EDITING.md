@@ -310,6 +310,31 @@ The quote is present in the HTML (verifiable via saving as draft and reading
 experimentally: after `Mail.make({new: "paragraph", …, at: reply.content})`,
 the compose window shows only the inserted text; the quoted original is gone.
 
+## The Automatic Blockquote Wrapper (Rendering Bug)
+
+Recent versions of Mail.app (confirmed on macOS 13+) automatically wrap **any** 
+content inserted via the scripting API into a `blockquote type="cite"` tag in 
+the final MIME HTML source.
+
+```html
+<blockquote type="cite" ...>
+  <p>Your scripted content here</p>
+</blockquote>
+```
+
+### Impact
+
+- **Visual Rendering:** Most email clients (including Gmail, Outlook, and Mail.app itself) render `blockquote type="cite"` with a vertical "quote bar" (often purple or blue).
+- **Recipient Perception:** The recipient sees the *entire* message as if it were a quoted part of a previous email, even if it is a new message or the primary reply body.
+- **No Scripting Workaround:** This wrapping happens at the Mail.app rendering layer when converting `RichText` to HTML. No combination of `at:`, `withProperties`, or paragraph ordering prevents this.
+
+### Breaking out of the quote
+
+There is no known way to "break out" of this blockquote using only the 
+`RichText` scripting API. The only way to produce a "clean" reply body without 
+the quote bar is to use the [Clipboard HTML paste strategy](#clipboard-html-paste-strategy), 
+which bypasses the `content` property entirely.
+
 ## Approaches Tested
 
 The following table summarises every approach that was tested during the
@@ -1050,7 +1075,13 @@ setting) may be overwritten by the first write to `content`.
 8. **Use `Mail.draftsMailbox()`** to find drafts. Do not search by mailbox
    name — it varies by locale.
 
-9. **Do not attempt to modify `Message.content`** (saved messages in
+9. **Be aware of the "Automatic Blockquote Wrapper":** All content added via 
+   `content` will be wrapped in a `<blockquote type="cite">` in the final 
+   email. This often causes the reply to appear with a purple or blue quote bar 
+   in the recipient's email client. This is a limitation of Mail.app's 
+   scripting implementation.
+
+10. **Do not attempt to modify `Message.content`** (saved messages in
    mailboxes). It is read-only. API calls may appear to succeed but have no
    effect.
 
