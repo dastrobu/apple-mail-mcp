@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Pre-commit hook to run go fmt on all Go files and update TOC in README
+# Pre-commit hook to run go fmt, go vet, and update TOC in README
 #
 
 # Check if README.md is staged
@@ -25,7 +25,7 @@ fi
 GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$')
 
 if [ -z "$GO_FILES" ]; then
-    # No Go files staged, nothing to do for Go formatting
+    # No Go files staged, nothing to do for Go checks
     exit 0
 fi
 
@@ -41,4 +41,14 @@ for file in $GO_FILES; do
 done
 
 echo "✓ go fmt completed"
+
+echo "Running go vet ./..."
+
+# Run go vet on the whole project to ensure cross-package consistency
+if ! go vet ./...; then
+    echo "❌ go vet failed. Please fix errors before committing."
+    exit 1
+fi
+
+echo "✓ go vet completed"
 exit 0
