@@ -18,4 +18,5 @@ func RegisterAll(srv *mcp.Server, richtextConfig *richtext.PreparedConfig) {
 	RegisterListOutgoingMessages(srv)
 	RegisterReplaceOutgoingMessage(srv, richtextConfig)
 	RegisterFindMessages(srv)
+	RegisterFindUnreadMailboxesTool(srv)
 }
