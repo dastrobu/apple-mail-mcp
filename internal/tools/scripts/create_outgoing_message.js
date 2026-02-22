@@ -21,11 +21,10 @@ function run(argv) {
 
   // Parse arguments
   const subject = argv[0] || "";
-  const content = argv[1] || ""; // Ignored, handled by Go via accessibility
-  const toRecipientsJson = argv[2] || "";
-  const ccRecipientsJson = argv[3] || "";
-  const bccRecipientsJson = argv[4] || "";
-  const fromAccount = argv[5] || ""; // Account to send from (optional)
+  const toRecipientsJson = argv[1] || "";
+  const ccRecipientsJson = argv[2] || "";
+  const bccRecipientsJson = argv[3] || "";
+  const fromAccount = argv[4] || ""; // Account to send from (optional)
 
   try {
     // Validate subject (optional but recommended)
@@ -36,21 +35,21 @@ function run(argv) {
     // Prepare recipients
     let toList = [];
     try {
-      if (toRecipientsJson) toList = JSON.parse(toRecipientsJson);
+      if (toRecipientsJson) toList = JSON.parse(toRecipientsJson) || [];
     } catch (e) {
       log("Error parsing To recipients: " + e.toString());
     }
 
     let ccList = [];
     try {
-      if (ccRecipientsJson) ccList = JSON.parse(ccRecipientsJson);
+      if (ccRecipientsJson) ccList = JSON.parse(ccRecipientsJson) || [];
     } catch (e) {
       log("Error parsing CC recipients: " + e.toString());
     }
 
     let bccList = [];
     try {
-      if (bccRecipientsJson) bccList = JSON.parse(bccRecipientsJson);
+      if (bccRecipientsJson) bccList = JSON.parse(bccRecipientsJson) || [];
     } catch (e) {
       log("Error parsing BCC recipients: " + e.toString());
     }

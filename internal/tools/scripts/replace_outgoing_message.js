@@ -21,18 +21,17 @@ function run(argv) {
   // Parse arguments
   // argv[0]: outgoingId
   // argv[1]: newSubject
-  // argv[2]: ignoredContent
-  // argv[3]: toRecipientsJson
-  // argv[4]: ccRecipientsJson
-  // argv[5]: bccRecipientsJson
-  // argv[6]: newSender
+  // argv[2]: toRecipientsJson
+  // argv[3]: ccRecipientsJson
+  // argv[4]: bccRecipientsJson
+  // argv[5]: newSender
 
   const outgoingId = argv[0] ? parseInt(argv[0]) : 0;
   const newSubject = argv[1] || "";
-  const toRecipientsJson = argv[3] || "";
-  const ccRecipientsJson = argv[4] || "";
-  const bccRecipientsJson = argv[5] || "";
-  const newSender = argv[6] || "";
+  const toRecipientsJson = argv[2] || "";
+  const ccRecipientsJson = argv[3] || "";
+  const bccRecipientsJson = argv[4] || "";
+  const newSender = argv[5] || "";
 
   if (!outgoingId || outgoingId < 1) {
     return JSON.stringify({
@@ -116,7 +115,7 @@ function run(argv) {
         addrs = fallback;
       } else if (json && json !== "") {
         try {
-          addrs = JSON.parse(json);
+          addrs = JSON.parse(json) || [];
         } catch (e) {
           log("Error parsing recipients JSON: " + e.toString());
         }

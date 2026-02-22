@@ -119,7 +119,6 @@ func HandleReplaceOutgoingMessage(ctx context.Context, request *mcp.CallToolRequ
 	resultAny, err := jxa.Execute(ctx, replaceOutgoingMessageScript,
 		fmt.Sprintf("%d", input.OutgoingID),
 		subject,
-		"",
 		toRecipientsJSON,
 		ccRecipientsJSON,
 		bccRecipientsJSON,
