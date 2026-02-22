@@ -86,12 +86,11 @@ func HandleCreateOutgoingMessage(ctx context.Context, request *mcp.CallToolReque
 
 	// 3. Execute JXA to create the draft window
 	resultAny, err := jxa.Execute(ctx, createOutgoingMessageScript,
-		input.Account,
 		input.Subject,
-		"", // content is handled by paste
 		string(toRecipientsJSON),
 		string(ccRecipientsJSON),
-		string(bccRecipientsJSON))
+		string(bccRecipientsJSON),
+		input.Account)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create outgoing message: %w", err)
 	}

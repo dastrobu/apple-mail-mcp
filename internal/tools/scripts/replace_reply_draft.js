@@ -21,24 +21,23 @@ function run(argv) {
   // Parse arguments
   // argv[0]: outgoingId
   // argv[1]: newSubject
-  // argv[2]: ignoredContent
-  // argv[3]: toRecipientsJson
-  // argv[4]: ccRecipientsJson
-  // argv[5]: bccRecipientsJson
-  // argv[6]: newSender
-  // argv[7]: originalMessageId
-  // argv[8]: originalAccountName
-  // argv[9]: originalMailboxPathJson
+  // argv[2]: toRecipientsJson
+  // argv[3]: ccRecipientsJson
+  // argv[4]: bccRecipientsJson
+  // argv[5]: newSender
+  // argv[6]: originalMessageId
+  // argv[7]: originalAccountName
+  // argv[8]: originalMailboxPathJson
 
   const outgoingId = argv[0] ? parseInt(argv[0]) : 0;
   const newSubject = argv[1] || "";
-  const toRecipientsJson = argv[3] || "";
-  const ccRecipientsJson = argv[4] || "";
-  const bccRecipientsJson = argv[5] || "";
-  const newSender = argv[6] || "";
-  const originalMessageId = argv[7] ? parseInt(argv[7]) : 0;
-  const originalAccountName = argv[8] || "";
-  const originalMailboxPathJson = argv[9] || "";
+  const toRecipientsJson = argv[2] || "";
+  const ccRecipientsJson = argv[3] || "";
+  const bccRecipientsJson = argv[4] || "";
+  const newSender = argv[5] || "";
+  const originalMessageId = argv[6] ? parseInt(argv[6]) : 0;
+  const originalAccountName = argv[7] || "";
+  const originalMailboxPathJson = argv[8] || "";
 
   if (!outgoingId || outgoingId < 1) {
     return JSON.stringify({
