@@ -21,17 +21,18 @@ function run(argv) {
       logs.push(message);
     }
 
-    // Parse arguments: filterEnabled
-    const filterEnabledArg = argv[0] || "";
-
-    if (!filterEnabledArg) {
+    // Parse arguments
+    let args;
+    try {
+      args = JSON.parse(argv[0]);
+    } catch (e) {
       return JSON.stringify({
         success: false,
-        error: "Filter enabled flag is required (true or false)",
+        error: "Failed to parse input arguments JSON",
       });
     }
 
-    const filterEnabled = filterEnabledArg.toLowerCase() === "true";
+    const filterEnabled = args.enabled === true;
 
     // Get accounts - use whose() for filtering if enabled filter is true
     let accounts;

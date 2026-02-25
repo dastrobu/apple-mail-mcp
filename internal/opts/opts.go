@@ -116,12 +116,14 @@ type ToolCmd struct {
 	ListMailboxes          ListMailboxesCmd          `command:"list_mailboxes" description:"Lists mailboxes for a specific account"`
 	GetMessageContent      GetMessageContentCmd      `command:"get_message_content" description:"Retrieves the full content of a specific message"`
 	GetSelectedMessages    GetSelectedMessagesCmd    `command:"get_selected_messages" description:"Gets the currently selected message(s)"`
-	CreateReplyDraft       CreateReplyDraftCmd       `command:"create_reply_draft" description:"Creates a reply to a specific message"`
-	ReplaceReplyDraft      ReplaceReplyDraftCmd      `command:"replace_reply_draft" description:"Replaces an existing reply draft"`
+	CreateReply            CreateReplyCmd            `command:"create_reply" description:"Creates a reply to a specific message"`
+	ReplaceReply           ReplaceReplyCmd           `command:"replace_reply" description:"Replaces an existing reply"`
 	ListDrafts             ListDraftsCmd             `command:"list_drafts" description:"Lists draft messages from the Drafts mailbox"`
+	DeleteDraft            DeleteDraftCmd            `command:"delete_draft" description:"Deletes a draft message"`
 	CreateOutgoingMessage  CreateOutgoingMessageCmd  `command:"create_outgoing_message" description:"Creates a new outgoing email message"`
 	ListOutgoingMessages   ListOutgoingMessagesCmd   `command:"list_outgoing_messages" description:"Lists all OutgoingMessage objects currently in memory"`
 	ReplaceOutgoingMessage ReplaceOutgoingMessageCmd `command:"replace_outgoing_message" description:"Replaces an existing outgoing message"`
+	DeleteOutgoingMessage  DeleteOutgoingMessageCmd  `command:"delete_outgoing_message" description:"Deletes an outgoing message"`
 	FindMessages           FindMessagesCmd           `command:"find_messages" description:"Find messages in a mailbox"`
 }
 
@@ -181,30 +183,30 @@ func (c *GetSelectedMessagesCmd) Execute(args []string) error {
 	return nil
 }
 
-// CreateReplyDraftCmd represents the 'tool create_reply_draft' command
-type CreateReplyDraftCmd struct {
-	tools.CreateReplyDraftInput
-	Handler func(tools.CreateReplyDraftInput) error
+// CreateReplyCmd represents the 'tool create_reply' command
+type CreateReplyCmd struct {
+	tools.CreateReplyInput
+	Handler func(tools.CreateReplyInput) error
 }
 
-// Execute runs the create_reply_draft tool command
-func (c *CreateReplyDraftCmd) Execute(args []string) error {
+// Execute runs the create_reply tool command
+func (c *CreateReplyCmd) Execute(args []string) error {
 	if c.Handler != nil {
-		return c.Handler(c.CreateReplyDraftInput)
+		return c.Handler(c.CreateReplyInput)
 	}
 	return nil
 }
 
-// ReplaceReplyDraftCmd represents the 'tool replace_reply_draft' command
-type ReplaceReplyDraftCmd struct {
-	tools.ReplaceReplyDraftInput
-	Handler func(tools.ReplaceReplyDraftInput) error
+// ReplaceReplyCmd represents the 'tool replace_reply' command
+type ReplaceReplyCmd struct {
+	tools.ReplaceReplyInput
+	Handler func(tools.ReplaceReplyInput) error
 }
 
-// Execute runs the replace_reply_draft tool command
-func (c *ReplaceReplyDraftCmd) Execute(args []string) error {
+// Execute runs the replace_reply tool command
+func (c *ReplaceReplyCmd) Execute(args []string) error {
 	if c.Handler != nil {
-		return c.Handler(c.ReplaceReplyDraftInput)
+		return c.Handler(c.ReplaceReplyInput)
 	}
 	return nil
 }
@@ -219,6 +221,20 @@ type ListDraftsCmd struct {
 func (c *ListDraftsCmd) Execute(args []string) error {
 	if c.Handler != nil {
 		return c.Handler(c.ListDraftsInput)
+	}
+	return nil
+}
+
+// DeleteDraftCmd represents the 'tool delete_draft' command
+type DeleteDraftCmd struct {
+	tools.DeleteDraftInput
+	Handler func(tools.DeleteDraftInput) error
+}
+
+// Execute runs the delete_draft tool command
+func (c *DeleteDraftCmd) Execute(args []string) error {
+	if c.Handler != nil {
+		return c.Handler(c.DeleteDraftInput)
 	}
 	return nil
 }
@@ -274,6 +290,20 @@ type FindMessagesCmd struct {
 func (c *FindMessagesCmd) Execute(args []string) error {
 	if c.Handler != nil {
 		return c.Handler(c.FindMessagesInput)
+	}
+	return nil
+}
+
+// DeleteOutgoingMessageCmd represents the 'tool delete_outgoing_message' command
+type DeleteOutgoingMessageCmd struct {
+	tools.DeleteOutgoingMessageInput
+	Handler func(tools.DeleteOutgoingMessageInput) error
+}
+
+// Execute runs the delete_outgoing_message tool command
+func (c *DeleteOutgoingMessageCmd) Execute(args []string) error {
+	if c.Handler != nil {
+		return c.Handler(c.DeleteOutgoingMessageInput)
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 
 	"github.com/dastrobu/apple-mail-mcp/internal/jxa"
@@ -38,12 +39,12 @@ func RegisterListAccounts(srv *mcp.Server) {
 
 func HandleListAccounts(ctx context.Context, request *mcp.CallToolRequest, input ListAccountsInput) (*mcp.CallToolResult, any, error) {
 	// Execute JXA script with enabled filter
-	enabledStr := "false"
-	if input.Enabled {
-		enabledStr = "true"
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal input for JXA: %w", err)
 	}
 
-	data, err := jxa.Execute(ctx, listAccountsScript, enabledStr)
+	data, err := jxa.Execute(ctx, listAccountsScript, string(inputJSON))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to execute list_accounts: %w", err)
 	}

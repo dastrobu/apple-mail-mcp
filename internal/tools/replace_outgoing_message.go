@@ -33,7 +33,7 @@ func RegisterReplaceOutgoingMessage(srv *mcp.Server, richtextConfig *richtext.Pr
 	mcp.AddTool(srv,
 		&mcp.Tool{
 			Name:        "replace_outgoing_message",
-			Description: "Replaces an existing outgoing message (draft) with new content using the Accessibility API. This tool is for standalone drafts (not replies). It deletes the old draft and creates a fresh instance before pasting the new content at the top, preserving the default signature. Returns the new OutgoingMessage ID.",
+			Description: "Replaces an outgoing message (draft or open window) with new content. Deletes the old message, creates a new one with updated properties, and pastes new content. NOTE: Mail.app may auto-save this message as a draft. If replacing this message again, check for and delete the old outgoing message first.",
 			InputSchema: GenerateSchema[ReplaceOutgoingMessageInput](),
 			Annotations: &mcp.ToolAnnotations{
 				Title:           "Replace Outgoing Message",
@@ -50,81 +50,33 @@ func RegisterReplaceOutgoingMessage(srv *mcp.Server, richtextConfig *richtext.Pr
 }
 
 func HandleReplaceOutgoingMessage(ctx context.Context, request *mcp.CallToolRequest, input ReplaceOutgoingMessageInput, richtextConfig *richtext.PreparedConfig) (*mcp.CallToolResult, any, error) {
+	// 1. Input Validation and Setup
 	if input.OutgoingID == 0 {
 		return nil, nil, fmt.Errorf("outgoing_id is required")
 	}
-
-	if input.Content == "" {
-		return nil, nil, fmt.Errorf("content is required")
+	if err := mac.EnsureAccessibility(); err != nil {
+		return nil, nil, err
 	}
 
 	contentFormat, err := ValidateAndNormalizeContentFormat(input.ContentFormat)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	if err := mac.EnsureAccessibility(); err != nil {
-		return nil, nil, err
-	}
-
-	mailPID := mac.GetMailPID()
-	if mailPID == 0 {
-		return nil, nil, fmt.Errorf("mail.app is not running. Please start Mail.app and try again")
-	}
-
 	htmlContent, plainContent, err := ToClipboardContent(input.Content, contentFormat)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	sentinel := "__KEEP__"
-
-	subject := sentinel
-	if input.Subject != nil {
-		subject = *input.Subject
-	}
-
-	sender := sentinel
-	if input.Sender != nil {
-		sender = *input.Sender
-	}
-
-	toRecipientsJSON := sentinel
-	if input.ToRecipients != nil {
-		encoded, err := json.Marshal(*input.ToRecipients)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal to-recipients: %w", err)
-		}
-		toRecipientsJSON = string(encoded)
-	}
-
-	ccRecipientsJSON := sentinel
-	if input.CcRecipients != nil {
-		encoded, err := json.Marshal(*input.CcRecipients)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal cc-recipients: %w", err)
-		}
-		ccRecipientsJSON = string(encoded)
-	}
-
-	bccRecipientsJSON := sentinel
-	if input.BccRecipients != nil {
-		encoded, err := json.Marshal(*input.BccRecipients)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal bcc-recipients: %w", err)
-		}
-		bccRecipientsJSON = string(encoded)
-	}
-
-	resultAny, err := jxa.Execute(ctx, replaceOutgoingMessageScript,
-		fmt.Sprintf("%d", input.OutgoingID),
-		subject,
-		toRecipientsJSON,
-		ccRecipientsJSON,
-		bccRecipientsJSON,
-		sender)
+	// 2. Prepare arguments for JXA
+	inputJSON, err := json.Marshal(input)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to replace outgoing message: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal input for JXA: %w", err)
+	}
+
+	// 3. Execute JXA to replace the message
+	resultAny, err := jxa.Execute(ctx, replaceOutgoingMessageScript, string(inputJSON))
+	if err != nil {
+		return nil, nil, fmt.Errorf("JXA execution failed: %w", err)
 	}
 
 	resultMap, ok := resultAny.(map[string]any)
@@ -132,18 +84,27 @@ func HandleReplaceOutgoingMessage(ctx context.Context, request *mcp.CallToolRequ
 		return nil, nil, fmt.Errorf("invalid JXA result format")
 	}
 
-	newOutgoingID, _ := resultMap["outgoing_id"].(float64)
-	resultSubject, _ := resultMap["subject"].(string)
+	// 4. Extract data for pasting
+	newOutgoingID, idOk := resultMap["outgoing_id"].(float64)
+	resultSubject, subjectOk := resultMap["subject"].(string)
+	mailPID, pidOk := resultMap["pid"].(float64)
 
-	// Atomically wait for the draft window, focus its body, and paste the content.
-	if err := mac.PasteIntoWindow(ctx, mailPID, resultSubject, 5*time.Second, htmlContent, plainContent); err != nil {
-		return nil, nil, fmt.Errorf("failed to paste content into draft window: %w", err)
+	if !idOk || !subjectOk || !pidOk {
+		return nil, nil, fmt.Errorf("JXA result is missing required fields (outgoing_id, subject, pid)")
 	}
 
+	// 5. Paste content into the new message window
+	if err := mac.PasteIntoWindow(ctx, int(mailPID), resultSubject, 5*time.Second, htmlContent, plainContent); err != nil {
+		return nil, nil, fmt.Errorf("accessibility paste operation failed: %w", err)
+	}
+
+	time.Sleep(250 * time.Millisecond) // Allow Mail.app to process the paste event.
+
+	// 6. Return success
 	finalResult := map[string]any{
 		"outgoing_id": newOutgoingID,
 		"subject":     resultSubject,
-		"message":     "Draft replaced and content pasted via Accessibility API.",
+		"message":     "Outgoing message replaced and content pasted.",
 	}
 
 	return nil, finalResult, nil

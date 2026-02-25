@@ -47,13 +47,12 @@ func RegisterFindMessages(srv *mcp.Server) {
 
 func HandleFindMessages(ctx context.Context, request *mcp.CallToolRequest, input FindMessagesInput) (*mcp.CallToolResult, any, error) {
 	// Apply default limit
-	limit := input.Limit
-	if limit == 0 {
-		limit = 50
+	if input.Limit == 0 {
+		input.Limit = 50
 	}
 
 	// Validate limit
-	if limit < 1 || limit > 1000 {
+	if input.Limit < 1 || input.Limit > 1000 {
 		return nil, nil, fmt.Errorf("limit must be between 1 and 1000")
 	}
 
@@ -74,43 +73,13 @@ func HandleFindMessages(ctx context.Context, request *mcp.CallToolRequest, input
 		return nil, nil, fmt.Errorf("at least one filter criterion is required (subject, sender, readStatus, flaggedOnly, dateAfter, or dateBefore)")
 	}
 
-	// Marshal mailbox path to JSON
-	mailboxPathJSON, err := json.Marshal(input.MailboxPath)
+	// Marshal input to JSON
+	inputJSON, err := json.Marshal(input)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal mailbox path: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal input for JXA: %w", err)
 	}
 
-	// Build filter options JSON
-	filterOptions := map[string]any{}
-	if input.Subject != "" {
-		filterOptions["subject"] = input.Subject
-	}
-	if input.Sender != "" {
-		filterOptions["sender"] = input.Sender
-	}
-	if input.ReadStatus != nil {
-		filterOptions["readStatus"] = *input.ReadStatus
-	}
-	if input.FlaggedOnly {
-		filterOptions["flaggedOnly"] = true
-	}
-	if input.DateAfter != "" {
-		filterOptions["dateAfter"] = input.DateAfter
-	}
-	if input.DateBefore != "" {
-		filterOptions["dateBefore"] = input.DateBefore
-	}
-
-	filterOptionsJSON, err := json.Marshal(filterOptions)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal filter options: %w", err)
-	}
-
-	data, err := jxa.Execute(ctx, findMessagesScript,
-		input.Account,
-		string(mailboxPathJSON),
-		string(filterOptionsJSON),
-		fmt.Sprintf("%d", limit))
+	data, err := jxa.Execute(ctx, findMessagesScript, string(inputJSON))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to execute find_messages: %w", err)
 	}

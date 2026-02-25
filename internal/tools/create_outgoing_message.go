@@ -26,14 +26,13 @@ type CreateOutgoingMessageInput struct {
 	ToRecipients  *[]string `json:"to_recipients,omitempty" jsonschema:"List of To recipients" long:"to-recipients" description:"List of To recipients. Can be specified multiple times."`
 	CcRecipients  *[]string `json:"cc_recipients,omitempty" jsonschema:"List of CC recipients" long:"cc-recipients" description:"List of CC recipients. Can be specified multiple times."`
 	BccRecipients *[]string `json:"bcc_recipients,omitempty" jsonschema:"List of BCC recipients" long:"bcc-recipients" description:"List of BCC recipients. Can be specified multiple times."`
-	Sender        *string   `json:"sender,omitempty" jsonschema:"The sender email address (optional, overrides account default)" long:"sender" description:"The sender email address (optional, overrides account default)"`
 }
 
 func RegisterCreateOutgoingMessage(srv *mcp.Server, richtextConfig *richtext.PreparedConfig) {
 	mcp.AddTool(srv,
 		&mcp.Tool{
 			Name:        "create_outgoing_message",
-			Description: "Creates a new outgoing message (draft) and pastes content at the top of the message body using the Accessibility API. Returns the new Draft ID.",
+			Description: "Creates a new outgoing message (open window), then pastes content into its body using the Accessibility API. Returns the new Outgoing Message ID. NOTE: Mail.app may auto-save this message as a draft. If replacing this message, check for and delete the old outgoing message first.",
 			InputSchema: GenerateSchema[CreateOutgoingMessageInput](),
 			Annotations: &mcp.ToolAnnotations{
 				Title:           "Create Outgoing Message",
@@ -50,7 +49,7 @@ func RegisterCreateOutgoingMessage(srv *mcp.Server, richtextConfig *richtext.Pre
 }
 
 func HandleCreateOutgoingMessage(ctx context.Context, request *mcp.CallToolRequest, input CreateOutgoingMessageInput, richtextConfig *richtext.PreparedConfig) (*mcp.CallToolResult, any, error) {
-	// 1. Input Validation
+	// 1. Input Validation & Setup
 	if input.Account == "" || input.Subject == "" || input.Content == "" {
 		return nil, nil, fmt.Errorf("account, subject, and content are required")
 	}
@@ -61,65 +60,50 @@ func HandleCreateOutgoingMessage(ctx context.Context, request *mcp.CallToolReque
 	if err := mac.EnsureAccessibility(); err != nil {
 		return nil, nil, err
 	}
-	mailPID := mac.GetMailPID()
-	if mailPID == 0 {
-		return nil, nil, fmt.Errorf("mail.app is not running. Please start Mail.app and try again")
-	}
 
 	// 2. Prepare content for clipboard and JXA
 	htmlContent, plainContent, err := ToClipboardContent(input.Content, contentFormat)
 	if err != nil {
 		return nil, nil, err
 	}
-	toRecipientsJSON, err := json.Marshal(input.ToRecipients)
+
+	// 3. Execute JXA to create and save the draft
+	inputJSON, err := json.Marshal(input)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal to-recipients: %w", err)
-	}
-	ccRecipientsJSON, err := json.Marshal(input.CcRecipients)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal cc-recipients: %w", err)
-	}
-	bccRecipientsJSON, err := json.Marshal(input.BccRecipients)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal bcc-recipients: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal input for JXA: %w", err)
 	}
 
-	// 3. Execute JXA to create the draft window
-	sender := ""
-	if input.Sender != nil {
-		sender = *input.Sender
+	resultAny, err := jxa.Execute(ctx, createOutgoingMessageScript, string(inputJSON))
+	if err != nil {
+		return nil, nil, fmt.Errorf("JXA execution failed: %w", err)
 	}
 
-	resultAny, err := jxa.Execute(ctx, createOutgoingMessageScript,
-		input.Subject,
-		string(toRecipientsJSON),
-		string(ccRecipientsJSON),
-		string(bccRecipientsJSON),
-		input.Account,
-		sender)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create outgoing message: %w", err)
-	}
 	resultMap, ok := resultAny.(map[string]any)
 	if !ok {
-		return nil, nil, fmt.Errorf("invalid JXA result format from create_outgoing_message.js")
+		return nil, nil, fmt.Errorf("invalid JXA result format")
 	}
-	draftID, _ := resultMap["draft_id"].(float64)
-	resultSubject, _ := resultMap["subject"].(string)
 
-	// 4. Fire-and-forget paste operation using Accessibility API
-	if err := mac.PasteIntoWindow(ctx, mailPID, resultSubject, 5*time.Second, htmlContent, plainContent); err != nil {
+	// Extract data for pasting
+	outgoingID, idOk := resultMap["outgoing_id"].(float64)
+	resultSubject, subjectOk := resultMap["subject"].(string)
+	mailPID, pidOk := resultMap["pid"].(float64)
+
+	if !idOk || !subjectOk || !pidOk {
+		return nil, nil, fmt.Errorf("JXA result is missing required fields (outgoing_id, subject, pid)")
+	}
+
+	// 4. Paste content
+	if err := mac.PasteIntoWindow(ctx, int(mailPID), resultSubject, 5*time.Second, htmlContent, plainContent); err != nil {
 		return nil, nil, fmt.Errorf("accessibility paste operation failed: %w", err)
 	}
+	time.Sleep(250 * time.Millisecond) // Allow Mail.app to process the paste event.
 
-	// Give Mail.app a moment to process the paste event before we exit.
-	time.Sleep(250 * time.Millisecond)
-
-	// 5. Return success without verification
+	// 5. Return success
 	finalResult := map[string]any{
-		"draft_id": draftID,
-		"subject":  resultSubject,
-		"message":  "Draft created and content pasted via Accessibility API. Note: Paste success is not verified.",
+		"outgoing_id": outgoingID,
+		"subject":     resultSubject,
+		"message":     "Outgoing message created and content pasted. Note: Paste success is not verified.",
 	}
+
 	return nil, finalResult, nil
 }

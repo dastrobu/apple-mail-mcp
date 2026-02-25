@@ -4,8 +4,9 @@
  * Lists mailboxes for a specific account with optional sub-mailbox filtering
  *
  * Arguments:
- *   argv[0] - accountName (required)
- *   argv[1] - mailboxPath (optional) - JSON array like [] for top-level or ["Inbox"] for sub-mailboxes
+ *   argv[0] - JSON string containing:
+ *     - account (required)
+ *     - mailboxPath (optional) - Array like [] for top-level or ["Inbox"] for sub-mailboxes
  *
  * Features:
  *   - Lists top-level mailboxes by default
@@ -36,10 +37,19 @@ function run(argv) {
     logs.push(message);
   }
 
-  // Parse arguments: accountName, mailboxPath (JSON array, optional)
-  const accountName = argv[0] || "";
-  // Handle empty string or missing parameter - treat as empty array
-  const mailboxPathStr = (argv[1] && argv[1].trim()) || "[]";
+  // Parse arguments
+  let args;
+  try {
+    args = JSON.parse(argv[0]);
+  } catch (e) {
+    return JSON.stringify({
+      success: false,
+      error: "Failed to parse input arguments JSON",
+    });
+  }
+
+  const accountName = args.account || "";
+  const mailboxPath = args.mailboxPath || [];
 
   // Validate account name
   if (!accountName) {
@@ -49,20 +59,10 @@ function run(argv) {
     });
   }
 
-  // Parse mailboxPath from JSON
-  let mailboxPath;
-  try {
-    mailboxPath = JSON.parse(mailboxPathStr);
-    if (!Array.isArray(mailboxPath)) {
-      return JSON.stringify({
-        success: false,
-        error: "Mailbox path must be a JSON array",
-      });
-    }
-  } catch (e) {
+  if (!Array.isArray(mailboxPath)) {
     return JSON.stringify({
       success: false,
-      error: "Invalid mailbox path JSON: " + e.toString(),
+      error: "Mailbox path must be a JSON array",
     });
   }
 

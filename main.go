@@ -281,18 +281,23 @@ func registerToolHandlers() {
 		return handleResult(data, err)
 	}
 
-	opts.GlobalOpts.Tool.CreateReplyDraft.Handler = func(input tools.CreateReplyDraftInput) error {
-		_, data, err := tools.HandleCreateReplyDraft(context.Background(), nil, input, getRichtextConfig())
+	opts.GlobalOpts.Tool.CreateReply.Handler = func(input tools.CreateReplyInput) error {
+		_, data, err := tools.HandleCreateReply(context.Background(), nil, input, getRichtextConfig())
 		return handleResult(data, err)
 	}
 
-	opts.GlobalOpts.Tool.ReplaceReplyDraft.Handler = func(input tools.ReplaceReplyDraftInput) error {
-		_, data, err := tools.HandleReplaceReplyDraft(context.Background(), nil, input, getRichtextConfig())
+	opts.GlobalOpts.Tool.ReplaceReply.Handler = func(input tools.ReplaceReplyInput) error {
+		_, data, err := tools.HandleReplaceReply(context.Background(), nil, input, getRichtextConfig())
 		return handleResult(data, err)
 	}
 
 	opts.GlobalOpts.Tool.ListDrafts.Handler = func(input tools.ListDraftsInput) error {
 		_, data, err := tools.HandleListDrafts(context.Background(), nil, input)
+		return handleResult(data, err)
+	}
+
+	opts.GlobalOpts.Tool.DeleteDraft.Handler = func(input tools.DeleteDraftInput) error {
+		_, data, err := tools.HandleDeleteDraft(context.Background(), nil, input)
 		return handleResult(data, err)
 	}
 
@@ -308,6 +313,11 @@ func registerToolHandlers() {
 
 	opts.GlobalOpts.Tool.ReplaceOutgoingMessage.Handler = func(input tools.ReplaceOutgoingMessageInput) error {
 		_, data, err := tools.HandleReplaceOutgoingMessage(context.Background(), nil, input, getRichtextConfig())
+		return handleResult(data, err)
+	}
+
+	opts.GlobalOpts.Tool.DeleteOutgoingMessage.Handler = func(input tools.DeleteOutgoingMessageInput) error {
+		_, data, err := tools.HandleDeleteOutgoingMessage(context.Background(), nil, input)
 		return handleResult(data, err)
 	}
 

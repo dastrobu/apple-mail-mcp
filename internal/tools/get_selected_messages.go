@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 
 	"github.com/dastrobu/apple-mail-mcp/internal/jxa"
@@ -38,12 +39,16 @@ func RegisterGetSelectedMessages(srv *mcp.Server) {
 
 func HandleGetSelectedMessages(ctx context.Context, request *mcp.CallToolRequest, input GetSelectedMessagesInput) (*mcp.CallToolResult, any, error) {
 	// Apply default for limit if not specified
-	limit := input.Limit
-	if limit == 0 {
-		limit = 5 // default
+	if input.Limit == 0 {
+		input.Limit = 5 // default
 	}
 
-	data, err := jxa.Execute(ctx, getSelectedMessagesScript, fmt.Sprintf("%d", limit))
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal input for JXA: %w", err)
+	}
+
+	data, err := jxa.Execute(ctx, getSelectedMessagesScript, string(inputJSON))
 	if err != nil {
 		return nil, nil, err
 	}

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 
 	"github.com/dastrobu/apple-mail-mcp/internal/jxa"
@@ -39,19 +40,21 @@ func RegisterListDrafts(srv *mcp.Server) {
 
 func HandleListDrafts(ctx context.Context, request *mcp.CallToolRequest, input ListDraftsInput) (*mcp.CallToolResult, any, error) {
 	// Apply default limit
-	limit := input.Limit
-	if limit == 0 {
-		limit = 50
+	if input.Limit == 0 {
+		input.Limit = 50
 	}
 
 	// Validate limit
-	if limit < 1 || limit > 1000 {
+	if input.Limit < 1 || input.Limit > 1000 {
 		return nil, nil, fmt.Errorf("limit must be between 1 and 1000")
 	}
 
-	data, err := jxa.Execute(ctx, listDraftsScript,
-		input.Account,
-		fmt.Sprintf("%d", limit))
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal input for JXA: %w", err)
+	}
+
+	data, err := jxa.Execute(ctx, listDraftsScript, string(inputJSON))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to execute list_drafts: %w", err)
 	}

@@ -21,21 +21,24 @@ function run(argv) {
     logs.push(message);
   }
 
-  // Parse arguments: limit, startAt (optional, defaults to 0)
-  const limit = parseInt(argv[0]);
-  const startAt = argv[1] ? parseInt(argv[1]) : 0;
-
-  if (!limit || limit < 1) {
+  // Parse arguments
+  let args;
+  try {
+    args = JSON.parse(argv[0]);
+  } catch (e) {
     return JSON.stringify({
       success: false,
-      error: "Limit is required and must be at least 1",
+      error: "Failed to parse input arguments JSON",
     });
   }
 
-  if (startAt < 0) {
+  const limit = args.limit || 5;
+  const startAt = 0;
+
+  if (limit < 1) {
     return JSON.stringify({
       success: false,
-      error: "startAt must be 0 or greater",
+      error: "Limit must be at least 1",
     });
   }
 
@@ -154,9 +157,17 @@ function run(argv) {
       logs: logs.join("\n"),
     });
   } catch (e) {
+    let errorCode = "UNKNOWN_ERROR";
+    if (
+      e.errorNumber === -1743 ||
+      e.toString().includes("Automation is not allowed")
+    ) {
+      errorCode = "MAIL_APP_NO_PERMISSIONS";
+    }
     return JSON.stringify({
       success: false,
       error: e.toString(),
+      errorCode: errorCode,
     });
   }
 }
