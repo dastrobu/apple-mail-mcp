@@ -49,7 +49,7 @@ checksum:
   algorithm: sha256
 
 # Homebrew tap (using modern 'homebrew' instead of deprecated 'brews')
-homebrew_casks:
+brews:
   - repository:
       owner: dastrobu
       name: homebrew-tap
@@ -59,16 +59,30 @@ homebrew_casks:
       name: goreleaserbot
       email: bot@goreleaser.com
 
-
+    directory: Formula
 
     homepage: https://github.com/dastrobu/mail-mcp
     description: "MCP server providing programmatic access to macOS Mail.app"
 
     license: MIT
 
+    # Only macOS
+    dependencies:
+      - name: go
+        type: build
 
+    test: |
+      system "#{bin}/mail-mcp", "--version"
 
+    install: |
+      bin.install "mail-mcp"
 
+    service: |
+      run [opt_bin/"mail-mcp", "run", "--transport=http"]
+      keep_alive true
+      log_path var/"log/mail-mcp.log"
+      error_log_path var/"log/mail-mcp.err"
+      environment_variables APPLE_MAIL_MCP_PORT: "8787", APPLE_MAIL_MCP_HOST: "localhost"
 
     caveats: |
       Apple Mail MCP Server has been installed!
