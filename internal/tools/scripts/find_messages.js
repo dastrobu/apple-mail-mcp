@@ -20,10 +20,19 @@ function run(argv) {
   }
 
   // Parse arguments
-  const accountName = argv[0] || "";
-  const mailboxPathStr = argv[1] || "";
-  const filterOptionsStr = argv[2] || "";
-  const limitStr = argv[3] || "";
+  let args;
+  try {
+    args = JSON.parse(argv[0]);
+  } catch (e) {
+    return JSON.stringify({
+      success: false,
+      error: "Failed to parse input arguments JSON",
+    });
+  }
+
+  const accountName = args.account || "";
+  const mailboxPath = args.mailboxPath || [];
+  const limit = args.limit || 50;
 
   // Validate account name
   if (!accountName) {
@@ -34,24 +43,6 @@ function run(argv) {
   }
 
   // Validate mailbox path
-  if (!mailboxPathStr) {
-    return JSON.stringify({
-      success: false,
-      error: "Mailbox path is required",
-    });
-  }
-
-  // Parse mailbox path
-  let mailboxPath;
-  try {
-    mailboxPath = JSON.parse(mailboxPathStr);
-  } catch (e) {
-    return JSON.stringify({
-      success: false,
-      error: "Invalid mailbox path JSON: " + e.toString(),
-    });
-  }
-
   if (!Array.isArray(mailboxPath) || mailboxPath.length === 0) {
     return JSON.stringify({
       success: false,
@@ -59,21 +50,7 @@ function run(argv) {
     });
   }
 
-  // Parse filter options
-  let filterOptions = {};
-  if (filterOptionsStr) {
-    try {
-      filterOptions = JSON.parse(filterOptionsStr);
-    } catch (e) {
-      return JSON.stringify({
-        success: false,
-        error: "Invalid filter options JSON: " + e.toString(),
-      });
-    }
-  }
-
-  // Parse and validate limit
-  const limit = limitStr ? parseInt(limitStr) : 50;
+  // Validate limit
   if (limit < 1 || limit > 1000) {
     return JSON.stringify({
       success: false,
@@ -142,29 +119,29 @@ function run(argv) {
     const conditions = [];
 
     // Filter by subject (substring match using _contains)
-    if (filterOptions.subject) {
-      conditions.push({ subject: { _contains: filterOptions.subject } });
+    if (args.subject) {
+      conditions.push({ subject: { _contains: args.subject } });
     }
 
     // Filter by sender (substring match using _contains)
-    if (filterOptions.sender) {
-      conditions.push({ sender: { _contains: filterOptions.sender } });
+    if (args.sender) {
+      conditions.push({ sender: { _contains: args.sender } });
     }
 
     // Filter by read status
-    if (filterOptions.readStatus !== undefined) {
-      conditions.push({ readStatus: filterOptions.readStatus });
+    if (args.readStatus !== undefined && args.readStatus !== null) {
+      conditions.push({ readStatus: args.readStatus });
     }
 
     // Filter by flagged status
-    if (filterOptions.flaggedOnly) {
+    if (args.flaggedOnly) {
       conditions.push({ flaggedStatus: true });
     }
 
     // Filter by date after (greater than)
-    if (filterOptions.dateAfter) {
+    if (args.dateAfter) {
       try {
-        const dateAfter = new Date(filterOptions.dateAfter);
+        const dateAfter = new Date(args.dateAfter);
         conditions.push({ dateReceived: { ">": dateAfter } });
       } catch (e) {
         log("Invalid dateAfter format: " + e.toString());
@@ -172,9 +149,9 @@ function run(argv) {
     }
 
     // Filter by date before (less than)
-    if (filterOptions.dateBefore) {
+    if (args.dateBefore) {
       try {
-        const dateBefore = new Date(filterOptions.dateBefore);
+        const dateBefore = new Date(args.dateBefore);
         conditions.push({ dateReceived: { "<": dateBefore } });
       } catch (e) {
         log("Invalid dateBefore format: " + e.toString());
@@ -306,15 +283,15 @@ function run(argv) {
         limit: limit,
         has_more: totalMatches > limit,
         filters_applied: {
-          subject: filterOptions.subject || null,
-          sender: filterOptions.sender || null,
+          subject: args.subject || null,
+          sender: args.sender || null,
           read_status:
-            filterOptions.readStatus !== undefined
-              ? filterOptions.readStatus
+            args.readStatus !== undefined && args.readStatus !== null
+              ? args.readStatus
               : null,
-          flagged_only: filterOptions.flaggedOnly || false,
-          date_after: filterOptions.dateAfter || null,
-          date_before: filterOptions.dateBefore || null,
+          flagged_only: args.flaggedOnly || false,
+          date_after: args.dateAfter || null,
+          date_before: args.dateBefore || null,
         },
       },
       logs: logs.join("\n"),

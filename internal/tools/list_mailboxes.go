@@ -39,19 +39,12 @@ func RegisterListMailboxes(srv *mcp.Server) {
 }
 
 func HandleListMailboxes(ctx context.Context, request *mcp.CallToolRequest, input ListMailboxesInput) (*mcp.CallToolResult, any, error) {
-	// Ensure mailboxPath is never nil - use empty array instead
-	mailboxPath := input.MailboxPath
-	if mailboxPath == nil {
-		mailboxPath = []string{}
-	}
-
-	// Marshal mailboxPath to JSON for passing to JXA script
-	mailboxPathJSON, err := json.Marshal(mailboxPath)
+	inputJSON, err := json.Marshal(input)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal mailbox path: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal input for JXA: %w", err)
 	}
 
-	data, err := jxa.Execute(ctx, listMailboxesScript, input.Account, string(mailboxPathJSON))
+	data, err := jxa.Execute(ctx, listMailboxesScript, string(inputJSON))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to execute list_mailboxes: %w", err)
 	}

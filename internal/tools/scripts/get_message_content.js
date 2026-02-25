@@ -4,9 +4,10 @@
  * Get message content from Mail.app with nested mailbox support
  *
  * Arguments:
- *   argv[0] - accountName (required)
- *   argv[1] - mailboxPath (required) - JSON array like ["Inbox"] or ["Inbox","GitHub"]
- *   argv[2] - messageId (required) - numeric ID
+ *   argv[0] - JSON string containing:
+ *     - account (required)
+ *     - mailboxPath (required) - Array like ["Inbox"] or ["Inbox","GitHub"]
+ *     - message_id (required) - numeric ID
  *
  * Improvements:
  *   - Supports nested mailboxes via mailboxPath array
@@ -37,10 +38,20 @@ function run(argv) {
     logs.push(message);
   }
 
-  // Parse arguments: accountName, mailboxPath (JSON array), messageId
-  const accountName = argv[0] || "";
-  const mailboxPathStr = argv[1] || "";
-  const messageId = argv[2] ? parseInt(argv[2]) : 0;
+  // Parse arguments
+  let args;
+  try {
+    args = JSON.parse(argv[0]);
+  } catch (e) {
+    return JSON.stringify({
+      success: false,
+      error: "Failed to parse input arguments JSON",
+    });
+  }
+
+  const accountName = args.account || "";
+  const mailboxPath = args.mailboxPath || [];
+  const messageId = args.message_id ? parseInt(args.message_id) : 0;
 
   // Validate all required arguments explicitly
   if (!accountName) {
@@ -50,10 +61,10 @@ function run(argv) {
     });
   }
 
-  if (!mailboxPathStr) {
+  if (!Array.isArray(mailboxPath) || mailboxPath.length === 0) {
     return JSON.stringify({
       success: false,
-      error: "Mailbox path is required",
+      error: "Mailbox path is required and must be a non-empty array",
     });
   }
 
@@ -61,23 +72,6 @@ function run(argv) {
     return JSON.stringify({
       success: false,
       error: "Message ID is required and must be a positive integer",
-    });
-  }
-
-  // Parse mailboxPath from JSON
-  let mailboxPath;
-  try {
-    mailboxPath = JSON.parse(mailboxPathStr);
-    if (!Array.isArray(mailboxPath) || mailboxPath.length === 0) {
-      return JSON.stringify({
-        success: false,
-        error: "Mailbox path must be a non-empty JSON array",
-      });
-    }
-  } catch (e) {
-    return JSON.stringify({
-      success: false,
-      error: `Invalid mailbox path JSON: ${e.toString()}`,
     });
   }
 

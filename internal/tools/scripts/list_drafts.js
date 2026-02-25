@@ -20,8 +20,18 @@ function run(argv) {
   }
 
   // Parse arguments
-  const accountName = argv[0] || "";
-  const limitStr = argv[1] || "";
+  let args;
+  try {
+    args = JSON.parse(argv[0]);
+  } catch (e) {
+    return JSON.stringify({
+      success: false,
+      error: "Failed to parse input arguments JSON",
+    });
+  }
+
+  const accountName = args.account || "";
+  const limit = args.limit || 50;
 
   // Validate account name
   if (!accountName) {
@@ -31,8 +41,7 @@ function run(argv) {
     });
   }
 
-  // Parse and validate limit
-  const limit = limitStr ? parseInt(limitStr) : 50;
+  // Validate limit
   if (limit < 1 || limit > 1000) {
     return JSON.stringify({
       success: false,

@@ -1,8 +1,9 @@
 function run(argv) {
   const Mail = Application("Mail");
   Mail.includeStandardAdditions = true;
+  const SystemEvents = Application("System Events");
 
-  // Check if Mail.app is running
+  // 1. CRITICAL: Check if running FIRST
   if (!Mail.running()) {
     return JSON.stringify({
       success: false,
@@ -11,120 +12,113 @@ function run(argv) {
     });
   }
 
-  // Collect logs instead of using console.log
+  // 2. Logging setup
   const logs = [];
-
-  // Helper function to log messages
   function log(message) {
     logs.push(message);
   }
 
-  // Parse arguments
-  const subject = argv[0] || "";
-  const toRecipientsJson = argv[1] || "";
-  const ccRecipientsJson = argv[2] || "";
-  const bccRecipientsJson = argv[3] || "";
-  const fromAccount = argv[4] || ""; // Account to send from (optional)
-  const senderOverride = argv[5] || ""; // Specific sender email (optional)
-
+  // 3. Argument Parsing & Validation
+  let args;
   try {
-    // Validate subject (optional but recommended)
-    if (!subject) {
-      log("Warning: No subject provided.");
-    }
+    args = JSON.parse(argv[0]);
+  } catch (e) {
+    return JSON.stringify({
+      success: false,
+      error: "Failed to parse input arguments JSON",
+      logs: logs.join("\n"),
+    });
+  }
 
-    // Prepare recipients
-    let toList = [];
-    try {
-      if (toRecipientsJson) toList = JSON.parse(toRecipientsJson) || [];
-    } catch (e) {
-      log("Error parsing To recipients: " + e.toString());
-    }
+  const accountName = args.account || "";
+  const subject = args.subject || "";
+  const toList = args.to_recipients || [];
+  const ccList = args.cc_recipients || [];
+  const bccList = args.bcc_recipients || [];
 
-    let ccList = [];
-    try {
-      if (ccRecipientsJson) ccList = JSON.parse(ccRecipientsJson) || [];
-    } catch (e) {
-      log("Error parsing CC recipients: " + e.toString());
-    }
+  log(`Received arguments: account='${accountName}', subject='${subject}'`);
 
-    let bccList = [];
-    try {
-      if (bccRecipientsJson) bccList = JSON.parse(bccRecipientsJson) || [];
-    } catch (e) {
-      log("Error parsing BCC recipients: " + e.toString());
-    }
+  if (!accountName || !subject) {
+    return JSON.stringify({
+      success: false,
+      error: "Account and Subject are required parameters.",
+      errorCode: "MISSING_PARAMETERS",
+      logs: logs.join("\n"),
+    });
+  }
 
-    // Determine the sender
-    let senderProperty = {};
-    if (senderOverride) {
-      senderProperty = { sender: senderOverride };
-    } else if (fromAccount) {
-      try {
-        const accounts = Mail.accounts.whose({ name: fromAccount })();
-        if (accounts.length > 0) {
-          senderProperty = { sender: accounts[0].emailAddresses()[0] };
-        } else {
-          log(
-            `Warning: Account '${fromAccount}' not found. Using default account.`,
-          );
-        }
-      } catch (e) {
-        log(
-          `Warning: Failed to find account '${fromAccount}': ${e.toString()}`,
-        );
-      }
+  // 4. Execution wrapped in try/catch
+  try {
+    const accounts = Mail.accounts.whose({ name: accountName })();
+    if (accounts.length === 0) {
+      return JSON.stringify({
+        success: false,
+        error: `Account '${accountName}' not found.`,
+        errorCode: "ACCOUNT_NOT_FOUND",
+        logs: logs.join("\n"),
+      });
     }
+    const account = accounts[0];
+    log(`Found account: ${account.name()}`);
 
-    // Create the message
     const msg = Mail.OutgoingMessage({
       subject: subject,
       visible: true,
-      ...senderProperty,
     });
-
     Mail.outgoingMessages.push(msg);
 
+    // Set the sender from the specified account before adding recipients
+    msg.sender = account.emailAddresses()[0];
+
     // Add recipients
-    if (toList.length > 0) {
-      toList.forEach((addr) => {
-        msg.toRecipients.push(Mail.Recipient({ address: addr }));
-      });
+    if (Array.isArray(toList)) {
+      toList.forEach((addr) =>
+        msg.toRecipients.push(Mail.Recipient({ address: addr })),
+      );
     }
 
-    if (ccList.length > 0) {
-      ccList.forEach((addr) => {
-        msg.ccRecipients.push(Mail.Recipient({ address: addr }));
-      });
+    if (Array.isArray(ccList)) {
+      ccList.forEach((addr) =>
+        msg.ccRecipients.push(Mail.Recipient({ address: addr })),
+      );
     }
 
-    if (bccList.length > 0) {
-      bccList.forEach((addr) => {
-        msg.bccRecipients.push(Mail.Recipient({ address: addr }));
-      });
+    if (Array.isArray(bccList)) {
+      bccList.forEach((addr) =>
+        msg.bccRecipients.push(Mail.Recipient({ address: addr })),
+      );
     }
 
-    // Save the message as a draft
-    msg.save();
+    // NOTE: We are NOT saving the message here. It exists as an open window (OutgoingMessage).
+    // This allows the user to decide whether to save it later (e.g. via replace_outgoing_message or manual action).
 
-    // Activate Mail.app to bring the window to front
     Mail.activate();
 
-    // Return the draft ID so Go can track it
+    const mailProcess = SystemEvents.processes.byName("Mail");
+    const pid = mailProcess.unixId();
+
+    // 5. CRITICAL: Return 'outgoing_id' for the message.
     return JSON.stringify({
       success: true,
       data: {
-        draft_id: msg.id(),
+        outgoing_id: msg.id(),
         subject: msg.subject(),
+        pid: pid, // PID is still useful for the immediate paste operation in Go.
         message:
-          "Draft created successfully. Window opened for content pasting.",
+          "Outgoing message created successfully. Window opened for content pasting.",
       },
       logs: logs.join("\n"),
     });
   } catch (e) {
+    let errorCode = "UNKNOWN_ERROR";
+    if (e.toString().includes("Automation is not allowed")) {
+      errorCode = "MAIL_APP_NO_PERMISSIONS";
+    }
+    log(`Error during draft creation: ${e.toString()}`);
     return JSON.stringify({
       success: false,
-      error: "Failed to create draft: " + e.toString(),
+      error: `Failed to create draft: ${e.toString()}`,
+      errorCode: errorCode,
       logs: logs.join("\n"),
     });
   }

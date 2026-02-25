@@ -45,17 +45,14 @@ func HandleGetMessageContent(ctx context.Context, request *mcp.CallToolRequest, 
 		return nil, nil, fmt.Errorf("mailboxPath is required and must be a non-empty array")
 	}
 
-	// Marshal mailboxPath to JSON for passing to JXA script
-	mailboxPathJSON, err := json.Marshal(input.MailboxPath)
+	// Marshal input to JSON
+	inputJSON, err := json.Marshal(input)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal mailbox path: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal input for JXA: %w", err)
 	}
 
-	// Execute JXA script with mailboxPath as JSON string
-	data, err := jxa.Execute(ctx, getMessageContentScript,
-		input.Account,
-		string(mailboxPathJSON),
-		fmt.Sprintf("%d", input.MessageID))
+	// Execute JXA script with input as JSON string
+	data, err := jxa.Execute(ctx, getMessageContentScript, string(inputJSON))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to execute get_message_content: %w", err)
 	}

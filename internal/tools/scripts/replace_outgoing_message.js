@@ -1,177 +1,131 @@
 function run(argv) {
   const Mail = Application("Mail");
   Mail.includeStandardAdditions = true;
-  const SENTINEL = "__KEEP__";
+  const SystemEvents = Application("System Events");
 
-  // Check if Mail.app is running
+  // 1. CRITICAL: Check if running FIRST
   if (!Mail.running()) {
     return JSON.stringify({
       success: false,
-      error: "Mail.app is not running.",
+      error: "Mail.app is not running. Please start Mail.app and try again.",
       errorCode: "MAIL_APP_NOT_RUNNING",
     });
   }
 
-  // Collect logs instead of using console.log
+  // 2. Logging setup
   const logs = [];
   function log(message) {
     logs.push(message);
   }
 
-  // Parse arguments
-  // argv[0]: outgoingId
-  // argv[1]: newSubject
-  // argv[2]: toRecipientsJson
-  // argv[3]: ccRecipientsJson
-  // argv[4]: bccRecipientsJson
-  // argv[5]: newSender
-
-  const outgoingId = argv[0] ? parseInt(argv[0]) : 0;
-  const newSubject = argv[1] || "";
-  const toRecipientsJson = argv[2] || "";
-  const ccRecipientsJson = argv[3] || "";
-  const bccRecipientsJson = argv[4] || "";
-  const newSender = argv[5] || "";
-
-  if (!outgoingId || outgoingId < 1) {
+  // 3. Argument Parsing & Validation
+  let args;
+  try {
+    args = JSON.parse(argv[0]);
+  } catch (e) {
     return JSON.stringify({
       success: false,
-      error: "Outgoing message ID is required",
+      error: "Failed to parse input arguments JSON",
+      logs: logs.join("\n"),
     });
   }
 
-  try {
-    // 1. Find the old draft to capture current state and then delete
-    const allOutgoing = Mail.outgoingMessages();
-    let oldMessage = null;
-    for (let i = 0; i < allOutgoing.length; i++) {
-      if (allOutgoing[i].id() === outgoingId) {
-        oldMessage = allOutgoing[i];
-        break;
-      }
-    }
+  const outgoingIdToReplace = args.outgoing_id;
 
-    if (!oldMessage) {
+  if (outgoingIdToReplace === undefined || outgoingIdToReplace === null) {
+    return JSON.stringify({
+      success: false,
+      error: "A valid outgoing_id is required.",
+      errorCode: "MISSING_PARAMETERS",
+      logs: logs.join("\n"),
+    });
+  }
+  log(`Attempting to replace outgoing message with ID: ${outgoingIdToReplace}`);
+
+  // 4. Execution wrapped in try/catch
+  try {
+    // --- Find the Old Message ---
+    // We search directly in Mail.outgoingMessages (open windows/drafts)
+    const messages = Mail.outgoingMessages.whose({ id: outgoingIdToReplace })();
+
+    if (messages.length === 0) {
       return JSON.stringify({
         success: false,
-        error: "Existing draft with ID " + outgoingId + " not found.",
+        error: `Outgoing message with ID ${outgoingIdToReplace} not found.`,
       });
     }
 
-    // Capture existing properties to support __KEEP__ sentinel (null in Go)
-    const oldSubject = oldMessage.subject();
-    const oldSender = oldMessage.sender();
+    const oldMsg = messages[0];
+    log(`Found message to replace. Subject: "${oldMsg.subject()}"`);
 
-    const getAddresses = (collection) => {
-      const addresses = [];
+    // --- Capture State from Old Message ---
+    const oldSubject = oldMsg.subject();
+    const oldSender = oldMsg.sender();
+
+    const getAddresses = (recipients) => {
       try {
-        const items = collection();
-        for (let i = 0; i < items.length; i++) {
-          addresses.push(items[i].address());
-        }
+        return recipients().map((r) => r.address());
       } catch (e) {
-        log("Error reading recipients: " + e.toString());
+        log(`Warning: Could not read recipients: ${e.toString()}`);
+        return [];
       }
-      return addresses;
+    };
+    const oldTo = getAddresses(oldMsg.toRecipients);
+    const oldCc = getAddresses(oldMsg.ccRecipients);
+    const oldBcc = getAddresses(oldMsg.bccRecipients);
+
+    // --- Create a New Outgoing Message ---
+    const newMsg = Mail.OutgoingMessage({ visible: true });
+    Mail.outgoingMessages.push(newMsg);
+    log("Created new empty outgoing message window.");
+
+    // --- Apply New/Old Properties ---
+    newMsg.subject = args.subject !== undefined ? args.subject : oldSubject;
+
+    const senderToSet = args.sender !== undefined ? args.sender : oldSender;
+    if (senderToSet) {
+      newMsg.sender = senderToSet;
+    }
+
+    const updateRecipients = (collection, newRecipients, fallback) => {
+      const addresses = newRecipients !== undefined ? newRecipients : fallback;
+      if (Array.isArray(addresses)) {
+        addresses.forEach((addr) =>
+          collection.push(Mail.Recipient({ address: addr })),
+        );
+      }
     };
 
-    const oldTo = getAddresses(oldMessage.toRecipients);
-    const oldCc = getAddresses(oldMessage.ccRecipients);
-    const oldBcc = getAddresses(oldMessage.bccRecipients);
+    updateRecipients(newMsg.toRecipients, args.to_recipients, oldTo);
+    updateRecipients(newMsg.ccRecipients, args.cc_recipients, oldCc);
+    updateRecipients(newMsg.bccRecipients, args.bcc_recipients, oldBcc);
+    log("Applied properties to new message.");
 
-    // 2. Create a fresh OutgoingMessage (visible for accessibility)
-    log("Creating fresh outgoing message...");
-    const newMsg = Mail.make({
-      new: "outgoingMessage",
-      withProperties: {
-        visible: true,
-      },
-    });
+    // --- Delete the Old Message ---
+    Mail.delete(oldMsg);
+    log(`Deleted old outgoing message with ID ${outgoingIdToReplace}.`);
 
-    // 3. Apply properties to new message
-    // Subject
-    if (newSubject === SENTINEL) {
-      newMsg.subject = oldSubject;
-    } else {
-      newMsg.subject = newSubject;
-    }
+    // NOTE: We are NOT saving the message here. It exists as an open window.
 
-    // Sender
-    if (newSender === SENTINEL) {
-      newMsg.sender = oldSender;
-    } else if (newSender) {
-      newMsg.sender = newSender;
-    }
-
-    // Recipients
-    function updateRecipients(
-      targetCollection,
-      constructorName,
-      json,
-      fallback,
-    ) {
-      let addrs = [];
-      if (json === SENTINEL) {
-        addrs = fallback;
-      } else if (json && json !== "") {
-        try {
-          addrs = JSON.parse(json) || [];
-        } catch (e) {
-          log("Error parsing recipients JSON: " + e.toString());
-        }
-      }
-
-      addrs.forEach((addr) => {
-        targetCollection.push(Mail[constructorName]({ address: addr }));
-      });
-    }
-
-    updateRecipients(
-      newMsg.toRecipients,
-      "ToRecipient",
-      toRecipientsJson,
-      oldTo,
-    );
-    updateRecipients(
-      newMsg.ccRecipients,
-      "CcRecipient",
-      ccRecipientsJson,
-      oldCc,
-    );
-    updateRecipients(
-      newMsg.bccRecipients,
-      "BccRecipient",
-      bccRecipientsJson,
-      oldBcc,
-    );
-
-    newMsg.save();
-
-    // 4. Delete old message
-    try {
-      Mail.delete(oldMessage);
-      log("Deleted old draft ID: " + outgoingId);
-    } catch (e) {
-      log("Warning: Could not delete old draft: " + e.toString());
-    }
-
-    // Activate Mail to bring the new window to front for Go's paste operation
     Mail.activate();
+    const pid = SystemEvents.processes.byName("Mail").unixId();
 
+    // 5. CRITICAL: Return `outgoing_id` of the *new* message
     return JSON.stringify({
       success: true,
       data: {
         outgoing_id: newMsg.id(),
-        old_outgoing_id: outgoingId,
         subject: newMsg.subject(),
-        message: "Draft replaced with fresh instance. Window ready for paste.",
+        pid: pid,
+        message: "Outgoing message was successfully replaced.",
       },
       logs: logs.join("\n"),
     });
   } catch (e) {
+    log(`Error during message replacement: ${e.toString()}`);
     return JSON.stringify({
       success: false,
-      error: "Failed to replace draft: " + e.toString(),
+      error: `Failed to replace outgoing message: ${e.toString()}`,
       logs: logs.join("\n"),
     });
   }
