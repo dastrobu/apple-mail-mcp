@@ -31,7 +31,7 @@ builds:
       - -X main.date={{.Date}}
 
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
 
 # Archive configuration
 archives:
@@ -49,7 +49,7 @@ checksum:
   algorithm: sha256
 
 # Homebrew tap (using modern 'homebrew' instead of deprecated 'brews')
-brews:
+homebrew_casks:
   - repository:
       owner: dastrobu
       name: homebrew-tap
@@ -59,23 +59,14 @@ brews:
       name: goreleaserbot
       email: bot@goreleaser.com
 
-    directory: Formula
+
 
     homepage: https://github.com/dastrobu/mail-mcp
     description: "MCP server providing programmatic access to macOS Mail.app"
 
     license: MIT
 
-    # Only macOS
-    dependencies:
-      - name: go
-        type: build
 
-    test: |
-      system "#{bin}/mail-mcp", "--version"
-
-    install: |
-      bin.install "mail-mcp"
 
     service: |
       run [opt_bin/"mail-mcp", "run", "--transport=http"]
