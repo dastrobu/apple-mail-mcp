@@ -66,16 +66,7 @@ homebrew_casks:
 
     license: MIT
 
-    # Only macOS
-    dependencies:
-      - name: go
-        type: build
 
-    test: |
-      system "#{bin}/mail-mcp", "--version"
-
-    install: |
-      bin.install "mail-mcp"
 
     service: |
       run [opt_bin/"mail-mcp", "run", "--transport=http"]
