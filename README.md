@@ -566,7 +566,7 @@ Gets the currently selected message(s) in the frontmost Mail.app viewer window.
 
 ### find_messages
 
-Finds messages in a mailbox using efficient `whose()` filtering. Supports filtering by subject, sender, read status, flagged status, and date ranges. Uses constant-time filtering for optimal performance.
+Finds messages in a mailbox using efficient bulk array property fetching. Supports filtering by subject, sender, read status, flagged status, and date ranges. Uses constant-time filtering for optimal performance.
 
 **Important:** At least one filter criterion must be specified to prevent accidentally fetching all messages.
 
@@ -624,7 +624,7 @@ Finds messages in a mailbox using efficient `whose()` filtering. Supports filter
 
 **Performance:**
 
-The tool uses JXA's `whose()` method for constant-time O(1) filtering, which is approximately 150x faster than iterating through messages. This makes it efficient even for mailboxes with thousands of messages.
+The tool uses AppleScript bulk array property fetching to extract filters efficiently. This makes it efficient even for mailboxes with thousands of messages.
 
 **Examples:**
 

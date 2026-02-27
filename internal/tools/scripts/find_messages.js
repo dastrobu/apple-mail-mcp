@@ -74,116 +74,161 @@ function run(argv) {
       });
     }
 
-        // Robust mailbox traversal function
+    // Robust mailbox traversal function
     function findMailboxByPath(account, targetPath) {
-        if (!targetPath || targetPath.length === 0) return account;
-        
-        try {
-            let current = account;
-            for (let i = 0; i < targetPath.length; i++) {
-                const part = targetPath[i];
-                let next = null;
-                try { next = current.mailboxes.whose({name: part})()[0]; } catch(e){}
-                
-                if (!next) { try { next = current.mailboxes[part]; next.name(); } catch(e){} }
-                if (!next) throw new Error("not found");
-                current = next;
-            }
-            return current;
-        } catch(e) {}
+      if (!targetPath || targetPath.length === 0) return account;
 
-        try {
-            const allMailboxes = account.mailboxes();
-            for (let i = 0; i < allMailboxes.length; i++) {
-                const mbx = allMailboxes[i];
-                const path = [];
-                let current = mbx;
-                while (current) {
-                    try {
-                        const name = current.name();
-                        if (name === account.name()) break;
-                        path.unshift(name);
-                        current = current.container();
-                    } catch (e) { break; }
-                }
-                if (path.length === targetPath.length) {
-                    let match = true;
-                    for (let j = 0; j < path.length; j++) {
-                        if (path[j] !== targetPath[j]) { match = false; break; }
-                    }
-                    if (match) return mbx;
-                }
+      try {
+        let current = account;
+        for (let i = 0; i < targetPath.length; i++) {
+          const part = targetPath[i];
+          let next = null;
+          try {
+            next = current.mailboxes.whose({ name: part })()[0];
+          } catch (e) {}
+
+          if (!next) {
+            try {
+              next = current.mailboxes[part];
+              next.name();
+            } catch (e) {}
+          }
+          if (!next) throw new Error("not found");
+          current = next;
+        }
+        return current;
+      } catch (e) {}
+
+      try {
+        const allMailboxes = account.mailboxes();
+        for (let i = 0; i < allMailboxes.length; i++) {
+          const mbx = allMailboxes[i];
+          const path = [];
+          let current = mbx;
+          while (current) {
+            try {
+              const name = current.name();
+              if (name === account.name()) break;
+              path.unshift(name);
+              current = current.container();
+            } catch (e) {
+              break;
             }
-        } catch(e) {}
-        return null;
+          }
+          if (path.length === targetPath.length) {
+            let match = true;
+            for (let j = 0; j < path.length; j++) {
+              if (path[j] !== targetPath[j]) {
+                match = false;
+                break;
+              }
+            }
+            if (match) return mbx;
+          }
+        }
+      } catch (e) {}
+      return null;
     }
 
-    let targetAccountRef = typeof targetAccount !== "undefined" ? targetAccount : accounts[0];
+    let targetAccountRef =
+      typeof targetAccount !== "undefined" ? targetAccount : accounts[0];
     let targetMailbox = findMailboxByPath(targetAccountRef, mailboxPath);
     if (!targetMailbox) {
-        return JSON.stringify({
-            success: false,
-            error: "Mailbox path '" + mailboxPath.join(" > ") + "' not found in account '" + accountName + "'."
-        });
+      return JSON.stringify({
+        success: false,
+        error:
+          "Mailbox path '" +
+          mailboxPath.join(" > ") +
+          "' not found in account '" +
+          accountName +
+          "'.",
+      });
     }
     let currentContainer = targetMailbox; // Used by get_message_content
-    let parentMailbox = targetMailbox;    // Used by some scripts if any
+    let parentMailbox = targetMailbox; // Used by some scripts if any
 
-    // Build whose() filter conditions
-    const conditions = [];
+    const msgs = targetMailbox.messages;
 
-    // Filter by subject (substring match using _contains)
+    // Fetch bulk properties only for active filters
+    let subjects = null;
+    let senders = null;
+    let readStatuses = null;
+    let flaggedStatuses = null;
+    let datesReceived = null;
+
+    let filterDateAfter = null;
+    let filterDateBefore = null;
+
     if (args.subject) {
-      conditions.push({ subject: { _contains: args.subject } });
+      subjects = msgs.subject();
     }
-
-    // Filter by sender (substring match using _contains)
     if (args.sender) {
-      conditions.push({ sender: { _contains: args.sender } });
+      senders = msgs.sender();
     }
-
-    // Filter by read status
     if (args.readStatus !== undefined && args.readStatus !== null) {
-      conditions.push({ readStatus: args.readStatus });
+      readStatuses = msgs.readStatus();
     }
-
-    // Filter by flagged status
     if (args.flaggedOnly) {
-      conditions.push({ flaggedStatus: true });
+      flaggedStatuses = msgs.flaggedStatus();
     }
-
-    // Filter by date after (greater than)
     if (args.dateAfter) {
       try {
-        const dateAfter = new Date(args.dateAfter);
-        conditions.push({ dateReceived: { ">": dateAfter } });
+        filterDateAfter = new Date(args.dateAfter);
+        datesReceived = msgs.dateReceived();
       } catch (e) {
         log("Invalid dateAfter format: " + e.toString());
       }
     }
-
-    // Filter by date before (less than)
     if (args.dateBefore) {
       try {
-        const dateBefore = new Date(args.dateBefore);
-        conditions.push({ dateReceived: { "<": dateBefore } });
+        filterDateBefore = new Date(args.dateBefore);
+        if (!datesReceived) datesReceived = msgs.dateReceived();
       } catch (e) {
         log("Invalid dateBefore format: " + e.toString());
       }
     }
 
-    // Get filtered messages using whose()
-    // Note: conditions.length should always be > 0 due to validation in Go
-    let filteredMessages;
-    if (conditions.length === 1) {
-      // Single condition
-      filteredMessages = targetMailbox.messages.whose(conditions[0])();
-    } else {
-      // Multiple conditions - use _and
-      filteredMessages = targetMailbox.messages.whose({ _and: conditions })();
+    let totalMessages = 0;
+    if (subjects) totalMessages = subjects.length;
+    else if (senders) totalMessages = senders.length;
+    else if (readStatuses) totalMessages = readStatuses.length;
+    else if (flaggedStatuses) totalMessages = flaggedStatuses.length;
+    else if (datesReceived) totalMessages = datesReceived.length;
+    else totalMessages = msgs.length;
+
+    const matchingIndices = [];
+    const subjectLower = args.subject ? args.subject.toLowerCase() : null;
+    const senderLower = args.sender ? args.sender.toLowerCase() : null;
+
+    for (let i = 0; i < totalMessages; i++) {
+      let match = true;
+
+      if (subjects && subjectLower) {
+        const s = subjects[i];
+        if (!s || s.toLowerCase().indexOf(subjectLower) === -1) match = false;
+      }
+      if (match && senders && senderLower) {
+        const s = senders[i];
+        if (!s || s.toLowerCase().indexOf(senderLower) === -1) match = false;
+      }
+      if (match && readStatuses) {
+        if (readStatuses[i] !== args.readStatus) match = false;
+      }
+      if (match && flaggedStatuses) {
+        if (flaggedStatuses[i] !== true) match = false;
+      }
+      if (match && datesReceived) {
+        const d = datesReceived[i];
+        if (filterDateAfter && d <= filterDateAfter) match = false;
+        if (filterDateBefore && d >= filterDateBefore) match = false;
+      }
+
+      if (match) {
+        matchingIndices.push(i);
+      }
     }
 
-    const totalMatches = filteredMessages.length;
+    const totalMatches = matchingIndices.length;
     log("Found " + totalMatches + " matching messages");
 
     // Limit the number of messages to process
@@ -191,7 +236,8 @@ function run(argv) {
     const messages = [];
 
     for (let i = 0; i < maxProcess; i++) {
-      const msg = filteredMessages[i];
+      const idx = matchingIndices[i];
+      const msg = msgs[idx];
 
       try {
         // Get basic properties
